@@ -1,5 +1,5 @@
 
-function window_networks()
+function window_network()
 	local x                = nn.Identity()()
 	
 	local word_embeddings  = nn.LookupTable(params.vocab_size,parans.embedding_size)
@@ -18,9 +18,8 @@ function window_networks()
 	end
 
 	local pred = nn.LogSoftMax()(a)
-	local err  = nn.ClassNLLCriterion()({pred, y})
 	
-	local module           = nn.gModule({x,y},{err})
+	local module           = nn.gModule({x},{pred})
 	module:getParameters():uniform(-params.init_weight, params.init_weight)
 	return transfer_data(module)
 end

@@ -1,0 +1,181 @@
+
+local data = torch.class('data')
+
+function tost(i)
+	local i_str = ''
+	if i < 10 then i_str = '0' end
+	i_str = i_str .. tostring(i)
+	return i_str
+end
+
+function data:read_data() 
+	data_path = '/home/llajan/data/treebank/TAGGED/POS/WSJ/'
+	tvt = 1
+	local words = {}
+	local tagset = {}
+	local tagcount = 0
+	local sentences = {{},{},{}}
+	local tags = {{},{},{}}
+	for i = 0,24 do
+		if i == 19 then tvt = tvt + 1 end
+		if i == 22 then tvt = tvt + 1 end
+		local i_str = tost(i)
+		for j = 0,99 do
+			if i > 0 or j > 0 then
+				local j_str = tost(j)
+				local file_path = data_path .. i_str .. '/WSJ_' .. i_str .. j_str .. '.POS'
+				local sent_mid = false
+				local sentence = {}
+				local tag = {}
+				for line in io.lines(file_path) do
+					if not sent_mid then
+						if line ~= '' and string.sub(line,1,1) ~= '=' then sent_mid = true end
+					end
+					if sent_mid then
+						if line == '' or string.sub(line,1,1) == '=' then 
+							sent_mid = false
+							--print(sentence)
+							table.insert(sentences[tvt],sentence)
+							table.insert(tags[tvt],tag)
+							sentence = {}
+							tag = {}
+						else
+							--if string.sub(line,1,1) == '[' and string.sub(line,-1,-1) == ']' then line = string.sub(line,2,-2) end
+							--if string.sub(line,1,1) == '[' and string.sub(line,-2,-2) == ']' then line = string.sub(line,2,-3) end
+							local tokens = string.split(line,' ')
+							for k = 1,#tokens do 
+								local token = string.split(tokens[k],'/')
+								if token[2] ~= nil then
+									--if token[1] == nil then
+									--	print(tokens)
+									--end
+									if words[token[1]] == nil then 	words[token[1]] = 0
+									else							words[token[1]] = words[token[1]] + 1
+									end
+									local tg = token[#token]
+									if string.find(tg,'|') then
+										tg = string.split(tg,'|')[1]
+									end
+									if tagset[tg] == nil then 
+										tagcount = tagcount + 1
+										if tg == nil then
+											print(i_str,j_str)
+											print(tokens)
+										end
+										tagset[tg] = tagcount
+									end
+									table.insert(sentence,token[1])
+									table.insert(tag,tg)
+								end
+							end
+						end
+					end
+				end
+				--print(sentence)
+				table.insert(sentences[tvt],sentence)
+				table.insert(tags[tvt],tag)
+				sentence = {}
+				tag = {}
+			end
+		end
+	end
+	return {sentences, tags, words, tagset, tagcount}
+end			
+
+function data:__init()
+	local sentences, tags, words, tagset, tagcount = unpack(self:read_data())
+	local word_freqs = {}
+	--for w,c in pairs(words) do table.insert(word_freqs,c) end
+	--table.sort(word_freqs)
+	--print(word_freqs)
+	--word_freqs_sorted = table.sort(word_freqs)
+	--print('num_words',#word_freqs)
+	--local MOST_FREQ = 100000
+	--local cutoff = #word_freqs - MOST_FREQ
+	--print(cutoff,#word_freqs)
+	--print(word_freqs[cutoff])
+
+	DUMMY = 1
+	self.vocab_map = {}
+	local word_id = 1
+	for word,_ in pairs(words) do 
+		if self.vocab_map[word] == nil then
+			word_id = word_id + 1
+			self.vocab_map[word] = word_id
+		end
+	end
+	params.vocab_size = word_id
+	self.tag_map = tagset
+
+	print(tagset)
+	print(tagcount)
+
+	for i = 1,3 do
+		for j = 1,#sentences[i] do
+			local sent = sentences[i][j]
+			local sent_t = {}
+			for k = 1,(params.window_size-1)/2 do table.insert(sent_t,DUMMY) end
+			for _,word in ipairs(sent) do table.insert(sent_t,self.vocab_map[word]) end
+			for k = 1,(params.window_size-1)/2 do table.insert(sent_t,DUMMY) end
+			sentences[i][j] = torch.Tensor(sent_t):cuda()
+
+			local tag_t = {}
+			local tag = tags[i][j]
+			for _,tg in ipairs(tag) do table.insert(tag_t,self.tag_map[tg]) end
+			tags[i][j] = torch.Tensor(tag_t):cuda()
+		end
+	end
+
+	self.sent_ptr = {1,1,1}
+	self.token_ptr = {1,1,1}
+	self.batch_count = {}
+
+	self.batchTensor = torch.Tensor(params.batch_size,params.window_size):cuda()
+	self.batchTarget = torch.Tensor(params.batch_size):cuda()
+	self.Nsentences = {#sentences[1],#sentences[2],#sentences[3]}
+end
+
+function get_batch_count(tvt)
+	if self.batch_count[tvt] ~= nil then
+		return self.batch_count[tvt]
+	else
+		local num_data = 0
+		for i = 1,self.Nsentences[tvt] do
+			num_data = num_data + self.sentences[tvt][i]:size(1) - (params.window_size-1)
+		end
+		self.batch_count[tvt] = torch.round(num_data/params.batch_size)
+		return self.batch_count[tvt]
+	end
+end
+
+function get_next_batch(tvt,rand)
+	local sentences = self.sentences[tvt]
+	local targets = self.tags[tvt]
+	local Nsent = #self.sentences[tvt]
+
+	local batch			= self.batchTensor
+	local batch_target	= self.batchTarget
+
+	local x,y
+	for i = 1,params.batch_size do
+		if rand then
+			x = torch.random(Nsent)
+			y = torch.random(sentences[x]:size(1) - (params.window_size-1))
+		else
+			if self.token_ptr[tvt] > sentences[self.sent_ptr[tvt]]:size(1) - (params.window_size-1) then
+				self.sent_ptr[tvt] = self.sent_ptr[tvt] + 1
+				self.token_ptr[tvt] = 1
+			end
+			if self.sent_ptr[tvt] > self.Nsentences[tvt] then 
+				self.sent_ptr[tvt] = 1
+				self.token_ptr[tvt] = 1
+			end
+			x = self.sent_ptr[tvt]
+			y = self.token_ptr[tvt]
+		end
+		batch[i] = sentences[x]:sub(y,y+params.window_size-1)
+		batch_target[i]:copy(targets[y+(params.window_size-1)/2])
+
+		return batch,batch_target
+	end
+end
