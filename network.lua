@@ -2,25 +2,22 @@
 function window_network()
 	local x                = nn.Identity()()
 	
-	local word_embeddings  = nn.LookupTable(params.vocab_size,parans.embedding_size)
+	local word_embeddings  = nn.LookupTable(params.vocab_size,params.embedding_size)
 
 	local words = word_embeddings(x)
 
-	local words_cat = nn.Reshape(params.batch_size,1,params.window_size*params.embedding_size)
+	local words_cat = nn.Reshape(params.batch_size,params.layer_size[1])(words)
 
-	local z,a
-	local input_size, output_size = params.window_size*params.embedding_size
-	for i = 1, params.layers do
-		output_size = params.layer_size[i]
-		z = nn.Linear(input_size, params.hid_size)(words_cat)
-		a = nn.Tanh()(z1)
-		input_size = output_size
+	local a = words_cat
+	for i = 1, params.layers-1 do
+		local z = nn.Linear(params.layer_size[i], params.layer_size[i+1])(a)
+		a = nn.Tanh()(z)
 	end
 
 	local pred = nn.LogSoftMax()(a)
 	
 	local module           = nn.gModule({x},{pred})
 	module:getParameters():uniform(-params.init_weight, params.init_weight)
-	return transfer_data(module)
+	return module:cuda()
 end
 

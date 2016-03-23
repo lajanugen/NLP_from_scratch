@@ -21,9 +21,7 @@ function data:read_data()
 		if i == 22 then tvt = tvt + 1 end
 		local i_str = tost(i)
 		for j = 0,99 do
-			if i > 0 or j > 0 then
-				local j_str = tost(j)
-				local file_path = data_path .. i_str .. '/WSJ_' .. i_str .. j_str .. '.POS'
+			if i > 0 or j > 0 then local j_str = tost(j) local file_path = data_path .. i_str .. '/WSJ_' .. i_str .. j_str .. '.POS'
 				local sent_mid = false
 				local sentence = {}
 				local tag = {}
@@ -35,6 +33,7 @@ function data:read_data()
 						if line == '' or string.sub(line,1,1) == '=' then 
 							sent_mid = false
 							--print(sentence)
+							assert(#sentence > 0)
 							table.insert(sentences[tvt],sentence)
 							table.insert(tags[tvt],tag)
 							sentence = {}
@@ -72,10 +71,12 @@ function data:read_data()
 					end
 				end
 				--print(sentence)
-				table.insert(sentences[tvt],sentence)
-				table.insert(tags[tvt],tag)
-				sentence = {}
-				tag = {}
+				if #sentence > 0 then
+					table.insert(sentences[tvt],sentence)
+					table.insert(tags[tvt],tag)
+					sentence = {}
+					tag = {}
+				end
 			end
 		end
 	end
@@ -94,6 +95,8 @@ function data:__init()
 	--local cutoff = #word_freqs - MOST_FREQ
 	--print(cutoff,#word_freqs)
 	--print(word_freqs[cutoff])
+	
+	params.target_size = tagcount
 
 	DUMMY = 1
 	self.vocab_map = {}
@@ -107,8 +110,8 @@ function data:__init()
 	params.vocab_size = word_id
 	self.tag_map = tagset
 
-	print(tagset)
-	print(tagcount)
+	--print(tagset)
+	--print(tagcount)
 
 	for i = 1,3 do
 		for j = 1,#sentences[i] do
@@ -118,6 +121,8 @@ function data:__init()
 			for _,word in ipairs(sent) do table.insert(sent_t,self.vocab_map[word]) end
 			for k = 1,(params.window_size-1)/2 do table.insert(sent_t,DUMMY) end
 			sentences[i][j] = torch.Tensor(sent_t):cuda()
+
+			if sentences[i][j]:size(1) == 4 then print('sent', sent) end
 
 			local tag_t = {}
 			local tag = tags[i][j]
@@ -130,12 +135,15 @@ function data:__init()
 	self.token_ptr = {1,1,1}
 	self.batch_count = {}
 
-	self.batchTensor = torch.Tensor(params.batch_size,params.window_size):cuda()
-	self.batchTarget = torch.Tensor(params.batch_size):cuda()
+	self.sentences = sentences
+	self.tags = tags
+
+	self.batchTensor = torch.ones(params.batch_size,params.window_size):cuda()
+	self.batchTarget = torch.ones(params.batch_size):cuda()
 	self.Nsentences = {#sentences[1],#sentences[2],#sentences[3]}
 end
 
-function get_batch_count(tvt)
+function data:get_batch_count(tvt)
 	if self.batch_count[tvt] ~= nil then
 		return self.batch_count[tvt]
 	else
@@ -148,7 +156,7 @@ function get_batch_count(tvt)
 	end
 end
 
-function get_next_batch(tvt,rand)
+function data:get_next_batch(tvt,rand)
 	local sentences = self.sentences[tvt]
 	local targets = self.tags[tvt]
 	local Nsent = #self.sentences[tvt]
@@ -160,6 +168,7 @@ function get_next_batch(tvt,rand)
 	for i = 1,params.batch_size do
 		if rand then
 			x = torch.random(Nsent)
+			if (sentences[x]:size(1) <= params.window_size-1) then print(sentences[x]) end
 			y = torch.random(sentences[x]:size(1) - (params.window_size-1))
 		else
 			if self.token_ptr[tvt] > sentences[self.sent_ptr[tvt]]:size(1) - (params.window_size-1) then
@@ -172,10 +181,11 @@ function get_next_batch(tvt,rand)
 			end
 			x = self.sent_ptr[tvt]
 			y = self.token_ptr[tvt]
+			self.token_ptr[tvt] = self.token_ptr[tvt] + 1
 		end
+		assert(sentences[x]:size(1) >= y+params.window_size-1)
 		batch[i] = sentences[x]:sub(y,y+params.window_size-1)
-		batch_target[i]:copy(targets[y+(params.window_size-1)/2])
-
-		return batch,batch_target
+		batch_target[i] = targets[x][y]
 	end
+	return batch, batch_target
 end

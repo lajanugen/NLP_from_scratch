@@ -2,53 +2,74 @@ require 'nngraph'
 require 'cunn'
 require 'network'
 require 'data'
+require 'optim'
+require 'utils'
 
 params = {
 window_size		= 5,
 vocab_size		= 100,
 embedding_size  = 100,
-batch_size		= 100,
+batch_size		= 500,
 layers			= 1,
 num_tags		= 1,
-lr				= 0.1,
-layer_size		= {300, num_tags},
+lr				= 0.01,
+layers			= 3,
+layer_size		= {0, 300},
 objective		= 'wll',
-custom_optimizer= true
+custom_optimizer= true,
+init_weight		= 0.01,
+max_max_epoch	= 100,
+stats_freq		= 1,
+log_err			= true,
+log_err_freq	= 1,
+err_log			= {false,true,true}
 }
 opt = {
 optimizer		= 'adam',
-learning_rate	= 0.1
+learning_rate	= 0.001,
+momentum		= 0.5
 }
+
+g_init_gpu(arg)
+
+data = data()
+params.layer_size[1] = params.window_size * params.embedding_size
+table.insert(params.layer_size, params.target_size)
 
 if params.objective == 'wll' then 
 	model = window_network()
-	criterion = nn.ClassNLLCriterion()
+	criterion = nn.ClassNLLCriterion():cuda()
 end
 
-local paramx, paramdx = model:getParameters()
+paramx, paramdx = model:getParameters()
 
 local function feval(x)
 	if x ~= paramx then
 		paramx:copy(x)
 	end
+	--assert(torch.sum(torch.eq(data_x,0)) == 0)
+	--assert(torch.sum(torch.eq(data_y,0)) == 0) 
+	--print(data_x)
+	--print(params.vocab_size)
 	local pred = model:forward(data_x)
 	local err = criterion:forward(pred, data_y)
-	local df_dw = criterion:forward(pred, data_y)
+	local df_dw = criterion:backward(pred, data_y)
 	paramdx:fill(0)
-	model:backward({data_x},{df_dw})
+	model:backward(data_x,df_dw)
 
 	return err, paramdx
 end
 
 local function run(tvt)
-	local num_batches = get_batch_count(tvt)
+	local num_batches = data:get_batch_count(tvt)
 	local err = 0
 	for i = 1,num_batches do
-		local data_x, data_y = get_next_batch(tvt)
+		local data_x, data_y = data:get_next_batch(tvt)
 		local pred = model:forward(data_x)
 		_, pred_y = torch.max(pred,2)
 		err = err + torch.mean(torch.eq(data_y, pred_y))
 	end
+	print(err/num_batches)
 	return err/num_batches
 end
 
@@ -64,13 +85,13 @@ local function run_flow()
 	print("Network parameters:")
 	--print(params)
 
-	local step = 0
+	--local step = 0
+	step = 0
 	local epoch = 0
 	local total_cases = 0
 	local beginning_time = torch.tic()
 	local start_time = torch.tic()
 	print("Starting training.")
-	local words_per_step = params.seq_length * params.batch_size
 
 	local epoch_size = data:get_batch_count(1)
 	print('epoch_size',epoch_size)
@@ -80,18 +101,16 @@ local function run_flow()
 	local perps, n_elems
 	local perp, n_elem
 
-
-	--ProFi:start()
-
 	while epoch < params.max_max_epoch do
+		--print(step)
 
-		data_x, data_y = data:get_next_batch()
+		data_x, data_y = data:get_next_batch(1,false)
 
 		if params.custom_optimizer then
-			if		opt.optimizer=='rmsprop' then	_, loss = optim.rmsprop(feval, model.paramx, optim_config)
+			if		opt.optimizer=='rmsprop' then	_, loss = optim.rmsprop(feval, paramx, optim_config)
 			elseif	opt.optimizer=='adagrad' then	_, loss = optim.adagrad(feval, paramx, optim_config)
 			elseif	opt.optimizer=='sgd'	 then	_, loss = optim.sgd(feval, paramx, optim_config)
-			elseif	opt.optimizer=='adam'	 then 	_, loss = optim.adam(feval, model.paramx, optim_config)
+			elseif	opt.optimizer=='adam'	 then 	_, loss = optim.adam(feval, paramx, optim_config)
 			else	error('undefined optimizer')
 			end
 			perp = loss[1]
@@ -142,7 +161,7 @@ local function run_flow()
 				for t = 1,perps:size(1) do io.write(g_d(perps[t])) io.write(' ') end
 				io.write('\n')
 			end
-			for i = 1,3 do if params.err_log[i] then table.insert(errors[i],model:run(i)) end end
+			for i = 1,3 do if params.err_log[i] then table.insert(errors[i],run(i)) end end
 		end
 
 		if step % 33 == 0 then
@@ -191,4 +210,5 @@ local function run_flow()
 end
 
 run_flow()
+
 
