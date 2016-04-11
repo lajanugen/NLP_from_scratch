@@ -1,8 +1,15 @@
+import 'models/GloVeEmbedding'
 
 function window_network()
 	local x                = nn.Identity()()
 	
-	local word_embeddings  = nn.LookupTable(params.vocab_size,params.embedding_size)
+	local word_embeddings
+
+	if params.use_embeddings then
+		word_embeddings = GloVeEmbeddingFixed(data.vocab_map, 300, '')
+	else
+		word_embeddings  = nn.LookupTable(params.vocab_size,params.embedding_size)
+	end
 
 	local words = word_embeddings(x)
 

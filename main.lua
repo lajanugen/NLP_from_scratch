@@ -8,7 +8,6 @@ require 'utils'
 params = {
 window_size		= 5,
 vocab_size		= 100,
-embedding_size  = 100,
 batch_size		= 500,
 layers			= 1,
 num_tags		= 1,
@@ -22,7 +21,9 @@ max_max_epoch	= 100,
 stats_freq		= 1,
 log_err			= true,
 log_err_freq	= 1,
-err_log			= {false,true,true}
+err_log			= {false,true,true},
+embedding_size  = 300,
+use_embeddings  = true
 }
 opt = {
 optimizer		= 'adam',
@@ -31,7 +32,6 @@ momentum		= 0.5
 }
 
 g_init_gpu(arg)
-
 data = data()
 params.layer_size[1] = params.window_size * params.embedding_size
 table.insert(params.layer_size, params.target_size)
