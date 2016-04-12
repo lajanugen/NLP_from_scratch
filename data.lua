@@ -20,7 +20,7 @@ function data:read_data()
 		if i == 19 then tvt = tvt + 1 end
 		if i == 22 then tvt = tvt + 1 end
 		local i_str = tost(i)
-		for j = 0,99 do
+		for j = 0,10 do --99 do
 			if i > 0 or j > 0 then local j_str = tost(j) local file_path = data_path .. i_str .. '/WSJ_' .. i_str .. j_str .. '.POS'
 				local sent_mid = false
 				local sentence = {}
@@ -97,6 +97,7 @@ function data:__init()
 	--print(word_freqs[cutoff])
 	
 	params.target_size = tagcount
+	params.num_tags = params.target_size
 
 	DUMMY = 1
 	self.vocab_map = {}
@@ -120,14 +121,14 @@ function data:__init()
 			for k = 1,(params.window_size-1)/2 do table.insert(sent_t,DUMMY) end
 			for _,word in ipairs(sent) do table.insert(sent_t,self.vocab_map[word]) end
 			for k = 1,(params.window_size-1)/2 do table.insert(sent_t,DUMMY) end
-			sentences[i][j] = torch.Tensor(sent_t):cuda()
+			sentences[i][j] = transfer_data(torch.Tensor(sent_t))
 
 			if sentences[i][j]:size(1) == 4 then print('sent', sent) end
 
 			local tag_t = {}
 			local tag = tags[i][j]
 			for _,tg in ipairs(tag) do table.insert(tag_t,self.tag_map[tg]) end
-			tags[i][j] = torch.Tensor(tag_t):cuda()
+			tags[i][j] = transfer_data(torch.Tensor(tag_t))
 		end
 	end
 
@@ -138,8 +139,6 @@ function data:__init()
 	self.sentences = sentences
 	self.tags = tags
 
-	self.batchTensor = torch.ones(params.batch_size,params.window_size):cuda()
-	self.batchTarget = torch.ones(params.batch_size):cuda()
 	self.Nsentences = {#sentences[1],#sentences[2],#sentences[3]}
 end
 
@@ -161,31 +160,42 @@ function data:get_next_batch(tvt,rand)
 	local targets = self.tags[tvt]
 	local Nsent = #self.sentences[tvt]
 
-	local batch			= self.batchTensor
-	local batch_target	= self.batchTarget
+	local batch
+	local batch_target
 
-	local x,y
-	for i = 1,params.batch_size do
-		if rand then
-			x = torch.random(Nsent)
-			if (sentences[x]:size(1) <= params.window_size-1) then print(sentences[x]) end
-			y = torch.random(sentences[x]:size(1) - (params.window_size-1))
-		else
-			if self.token_ptr[tvt] > sentences[self.sent_ptr[tvt]]:size(1) - (params.window_size-1) then
-				self.sent_ptr[tvt] = self.sent_ptr[tvt] + 1
-				self.token_ptr[tvt] = 1
+	if params.objective == 'wll' then
+		batch			= transfer_data(torch.ones(params.batch_size,params.window_size))
+		batch_target	= transfer_data(torch.ones(params.batch_size))
+		local x,y
+		for i = 1,params.batch_size do
+			if rand then
+				x = torch.random(Nsent)
+				if (sentences[x]:size(1) <= params.window_size-1) then print(sentences[x]) end
+				y = torch.random(sentences[x]:size(1) - (params.window_size-1))
+			else
+				if self.token_ptr[tvt] > sentences[self.sent_ptr[tvt]]:size(1) - (params.window_size-1) then
+					self.sent_ptr[tvt] = self.sent_ptr[tvt] + 1
+					self.token_ptr[tvt] = 1
+				end
+				if self.sent_ptr[tvt] > self.Nsentences[tvt] then 
+					self.sent_ptr[tvt] = 1
+					self.token_ptr[tvt] = 1
+				end
+				x = self.sent_ptr[tvt]
+				y = self.token_ptr[tvt]
+				self.token_ptr[tvt] = self.token_ptr[tvt] + 1
 			end
-			if self.sent_ptr[tvt] > self.Nsentences[tvt] then 
-				self.sent_ptr[tvt] = 1
-				self.token_ptr[tvt] = 1
-			end
-			x = self.sent_ptr[tvt]
-			y = self.token_ptr[tvt]
-			self.token_ptr[tvt] = self.token_ptr[tvt] + 1
+			assert(sentences[x]:size(1) >= y+params.window_size-1)
+			batch[i] = sentences[x]:sub(y,y+params.window_size-1)
+			batch_target[i] = targets[x][y]
 		end
-		assert(sentences[x]:size(1) >= y+params.window_size-1)
-		batch[i] = sentences[x]:sub(y,y+params.window_size-1)
-		batch_target[i] = targets[x][y]
+	else
+		if self.sent_ptr[tvt] > self.Nsentences[tvt] then 
+			self.sent_ptr[tvt] = 1
+		end
+		batch			= transfer_data(sentences[self.sent_ptr[tvt]])
+		batch:resize(1,batch:size(1))
+		batch_target	= transfer_data(targets[self.sent_ptr[tvt]])
 	end
 	return batch, batch_target
 end

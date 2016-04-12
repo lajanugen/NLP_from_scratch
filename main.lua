@@ -1,6 +1,7 @@
 require 'nngraph'
 require 'cunn'
 require 'network'
+require 'sll_model'
 require 'data'
 require 'optim'
 require 'utils'
@@ -8,14 +9,14 @@ require 'utils'
 params = {
 window_size		= 5,
 vocab_size		= 100,
-batch_size		= 500,
+batch_size		= 1,
 layers			= 1,
 num_tags		= 1,
 lr				= 0.01,
 layers			= 3,
 layer_size		= {0, 300},
-objective		= 'wll',
-custom_optimizer= true,
+objective		= 'sll',
+custom_optimizer= false,
 init_weight		= 0.01,
 max_max_epoch	= 100,
 stats_freq		= 1,
@@ -23,7 +24,11 @@ log_err			= true,
 log_err_freq	= 1,
 err_log			= {false,true,true},
 embedding_size  = 300,
-use_embeddings  = true
+use_embeddings  = false,
+caps_feats		= true,
+senna_vocab		= true,
+seq_length		= 10,
+use_gpu			= false
 }
 opt = {
 optimizer		= 'adam',
@@ -31,17 +36,25 @@ learning_rate	= 0.001,
 momentum		= 0.5
 }
 
-g_init_gpu(arg)
+function transfer_data(x)
+	if params.use_gpu then	return x:cuda()
+	else					return x
+	end
+end
+
+if params.use_gpu then g_init_gpu(arg) end
 data = data()
 params.layer_size[1] = params.window_size * params.embedding_size
 table.insert(params.layer_size, params.target_size)
 
 if params.objective == 'wll' then 
 	model = window_network()
-	criterion = nn.ClassNLLCriterion():cuda()
+	criterion = transfer_data(nn.ClassNLLCriterion())
+	paramx, paramdx = model:getParameters()
+else
+	model = sll_model()
 end
 
-paramx, paramdx = model:getParameters()
 
 local function feval(x)
 	if x ~= paramx then
@@ -116,7 +129,7 @@ local function run_flow()
 			perp = loss[1]
 			--n_elem = params.batch_size
 		else
-			perp,n_elem = model:pass()
+			perp, n_elem = model:pass(data_x, data_y)
 		end
 
 		if perps == nil then
@@ -130,14 +143,7 @@ local function run_flow()
 		total_cases = total_cases + params.batch_size
 		epoch = step / epoch_size
 		if step % torch.round(epoch_size * params.stats_freq) == 0 then
-			if data.timing then
-				print(model.get_batch)
-				print(model.enc_fp_time)
-				print(model.dec_fp_time)
-				print(model.enc_bp_time)
-				print(model.dec_bp_time)
-				model:reset_timers()
-			end
+			
 			local wps = torch.floor(total_cases / torch.toc(start_time))
 			local since_beginning = g_f3(torch.toc(beginning_time) / 60)
 			--', train perp. = ' .. g_f3(torch.exp(perps:mean())) ..
@@ -169,12 +175,8 @@ local function run_flow()
 			--collectgarbage()
 		end
 		if params.model_checkpoint and (step > 0) and ((step % (params.model_checkpoint_freq*epoch_size)) == 0) then
-			if params.bwd then
-				torch.save(params.save_path .. 'models/bwd_model' .. tostring(epoch),model);
-			else
-				torch.save(params.save_path .. 'models/paramx' .. tostring(epoch),model.paramx);
-				torch.save(params.save_path .. 'models/model' .. tostring(epoch),model);
-			end
+			torch.save(params.save_path .. 'models/paramx' .. tostring(epoch),model.paramx);
+			torch.save(params.save_path .. 'models/model' .. tostring(epoch),model);
 		end
 	end
 
@@ -182,12 +184,8 @@ local function run_flow()
 	--ProFi:writeReport('profiling_report')
 
 	if params.save_models then
-		if params.bwd then
-			torch.save(params.save_path .. 'models/bwd_model',model);
-		else
-			torch.save(params.save_path .. 'models/model.paramx',model.paramx);
-			torch.save(params.save_path .. 'models/model',model.paramx);
-		end
+		torch.save(params.save_path .. 'models/model.paramx',model.paramx);
+		torch.save(params.save_path .. 'models/model',model.paramx);
 	end
 
 	if params.make_plots then
