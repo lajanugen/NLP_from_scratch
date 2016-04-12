@@ -1,5 +1,5 @@
 require 'models/GloVeEmbedding'
-nngraph.setDebug('true')
+--nngraph.setDebug('true')
 
 function window_network()
 	local x                = nn.Identity()()
@@ -42,7 +42,7 @@ function window_network_probs()
 
 	local words = word_embeddings(x)
 
-	local words_cat = nn.Reshape(params.batch_size,params.layer_size[1])(words)
+	local words_cat = nn.Reshape(params.layer_size[1])(words)
 
 	local a = words_cat
 	for i = 1, params.layers-1 do
@@ -60,11 +60,13 @@ function sll()
 	local prev_d	= nn.Identity()()
 	local A			= nn.Identity()()
 
-	local rep_sum = nn.CAddTable()({net_out, prev_d})
-	local sum_shp = nn.Reshape(params.num_tags,2)(rep_sum)
+	local net_out_t = nn.Transpose({1,2})(net_out)
+	local rep_sum = nn.CAddTable()({net_out_t, prev_d})
+	local sum_shp = nn.Replicate(params.num_tags,2)(rep_sum)
 	local sum_mat = nn.CAddTable()({sum_shp,A})
 	local lse_mean = nn.Mean(1)(sum_mat)
-	local lse_mean_norm = nn.CSubTable()({sum_mat, nn.Reshape(params.num_tags,1)(lse_mean)})
+	local lse_mean_rep = nn.Replicate(params.num_tags,1)(lse_mean)
+	local lse_mean_norm = nn.CSubTable()({sum_mat, lse_mean_rep})
 	local next_d = nn.Log()(nn.Sum(1)(nn.Exp()(lse_mean_norm)))
 	local next_d = nn.CAddTable()({next_d, lse_mean})
 

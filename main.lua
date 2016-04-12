@@ -27,8 +27,8 @@ embedding_size  = 300,
 use_embeddings  = false,
 caps_feats		= true,
 senna_vocab		= true,
-seq_length		= 10,
-use_gpu			= false
+seq_length		= 100,
+use_gpu			= true
 }
 opt = {
 optimizer		= 'adam',
@@ -129,7 +129,8 @@ local function run_flow()
 			perp = loss[1]
 			--n_elem = params.batch_size
 		else
-			perp, n_elem = model:pass(data_x, data_y)
+			print(step)
+			perp = model:pass(data_x, data_y)
 		end
 
 		if perps == nil then

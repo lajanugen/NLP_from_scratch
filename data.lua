@@ -194,8 +194,11 @@ function data:get_next_batch(tvt,rand)
 			self.sent_ptr[tvt] = 1
 		end
 		batch			= transfer_data(sentences[self.sent_ptr[tvt]])
-		batch:resize(1,batch:size(1))
+		if batch:dim() == 1 then
+			batch:resize(1,batch:size(1))
+		end
 		batch_target	= transfer_data(targets[self.sent_ptr[tvt]])
+		--self.sent_ptr[tvt] = self.sent_ptr[tvt] + 1
 	end
 	return batch, batch_target
 end
