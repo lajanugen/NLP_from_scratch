@@ -20,7 +20,7 @@ function data:read_data()
 		if i == 19 then tvt = tvt + 1 end
 		if i == 22 then tvt = tvt + 1 end
 		local i_str = tost(i)
-		for j = 0,10 do --99 do
+		for j = 0,99 do
 			if i > 0 or j > 0 then local j_str = tost(j) local file_path = data_path .. i_str .. '/WSJ_' .. i_str .. j_str .. '.POS'
 				local sent_mid = false
 				local sentence = {}
@@ -198,7 +198,9 @@ function data:get_next_batch(tvt,rand)
 			batch:resize(1,batch:size(1))
 		end
 		batch_target	= transfer_data(targets[self.sent_ptr[tvt]])
-		--self.sent_ptr[tvt] = self.sent_ptr[tvt] + 1
+		if not dummy_data then
+			self.sent_ptr[tvt] = self.sent_ptr[tvt] + 1
+		end
 	end
 	return batch, batch_target
 end

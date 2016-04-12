@@ -60,9 +60,9 @@ function sll()
 	local prev_d	= nn.Identity()()
 	local A			= nn.Identity()()
 
-	local net_out_t = nn.Transpose({1,2})(net_out)
-	local rep_sum = nn.CAddTable()({net_out_t, prev_d})
-	local sum_shp = nn.Replicate(params.num_tags,2)(rep_sum)
+	--local net_out_t = nn.Transpose({1,2})(net_out)
+	--local rep_sum = nn.CAddTable()({net_out_t, prev_d})
+	local sum_shp = nn.Replicate(params.num_tags,2)(prev_d)
 	local sum_mat = nn.CAddTable()({sum_shp,A})
 	local lse_mean = nn.Mean(1)(sum_mat)
 	local lse_mean_rep = nn.Replicate(params.num_tags,1)(lse_mean)
@@ -70,9 +70,30 @@ function sll()
 	local next_d = nn.Log()(nn.Sum(1)(nn.Exp()(lse_mean_norm)))
 	local next_d = nn.CAddTable()({next_d, lse_mean})
 
+	next_d = nn.CAddTable()({next_d, net_out})
+
 	local module = nn.gModule({net_out, prev_d, A}, {next_d})
 	return transfer_data(module)
 end
+
+--function sll()
+--	local net_out	= nn.Identity()()
+--	local prev_d	= nn.Identity()()
+--	local A			= nn.Identity()()
+--
+--	local net_out_t = nn.Transpose({1,2})(net_out)
+--	local rep_sum = nn.CAddTable()({net_out_t, prev_d})
+--	local sum_shp = nn.Replicate(params.num_tags,2)(rep_sum)
+--	local sum_mat = nn.CAddTable()({sum_shp,A})
+--	local lse_mean = nn.Mean(1)(sum_mat)
+--	local lse_mean_rep = nn.Replicate(params.num_tags,1)(lse_mean)
+--	local lse_mean_norm = nn.CSubTable()({sum_mat, lse_mean_rep})
+--	local next_d = nn.Log()(nn.Sum(1)(nn.Exp()(lse_mean_norm)))
+--	local next_d = nn.CAddTable()({next_d, lse_mean})
+--
+--	local module = nn.gModule({net_out, prev_d, A}, {next_d})
+--	return transfer_data(module)
+--end
 
 
 function sll_network()

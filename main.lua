@@ -12,7 +12,7 @@ vocab_size		= 100,
 batch_size		= 1,
 layers			= 1,
 num_tags		= 1,
-lr				= 0.01,
+lr				= 0.1,
 layers			= 3,
 layer_size		= {0, 300},
 objective		= 'sll',
@@ -28,7 +28,8 @@ use_embeddings  = false,
 caps_feats		= true,
 senna_vocab		= true,
 seq_length		= 100,
-use_gpu			= true
+use_gpu			= true,
+dummy_data		= true
 }
 opt = {
 optimizer		= 'adam',
@@ -143,7 +144,8 @@ local function run_flow()
 		step = step + 1
 		total_cases = total_cases + params.batch_size
 		epoch = step / epoch_size
-		if step % torch.round(epoch_size * params.stats_freq) == 0 then
+		--if step % torch.round(epoch_size * params.stats_freq) == 0 then
+		if step % 1 == 0 then
 			
 			local wps = torch.floor(total_cases / torch.toc(start_time))
 			local since_beginning = g_f3(torch.toc(beginning_time) / 60)

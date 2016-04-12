@@ -29,7 +29,11 @@ function sll_model:fp(sequence, targets)
 		local x = sequence:sub(1,1,i,i+params.window_size-1)
 		local y = targets[i]
 		self.net_out[i] = self.networks[i]:forward(x)
-		self.sll[i]		= self.rnns[i]:forward({self.net_out[i], self.sll[i-1], self.A})
+		if i > 1 then
+			self.sll[i]	= self.rnns[i]:forward({self.net_out[i], self.sll[i-1], self.A})
+		else
+			self.sll[i] = self.net_out[1]
+		end
 		--graph.dot(self.rnns[1].fg, 'Forward Graph','./fg')
 		--print(self.net_out[i]:size())
 		prob = prob + self.net_out[i][1][y]
@@ -38,7 +42,7 @@ function sll_model:fp(sequence, targets)
 	--print(self.sll)
 	--print('ni',num_iter)
 	--print(#self.sll)
-	local err = prob - self.sll[num_iter]:sum()
+	local err = -(prob - self.sll[num_iter]:sum())
 	return err
 end
 
@@ -69,7 +73,7 @@ end
 
 function sll_model:pass(sequence, targets)
 	local perp = self:fp(sequence, targets)
-	--self:bp(sequence, targets)
+	self:bp(sequence, targets)
 	return perp
 end
 
