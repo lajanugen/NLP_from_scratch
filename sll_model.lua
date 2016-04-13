@@ -53,17 +53,26 @@ function sll_model:bp(sequence, targets)
 	self.dsll	= transfer_data(torch.ones(params.num_tags, 1))
 	--self.dsll:fill(1)
 	self.dA:fill(0)
+	local net_grad
 	for i = num_iter,1,-1 do
-		local tmp = self.rnns[i]:backward({self.net_out[i], self.sll[i-1], self.A}, self.dsll)
+		if i > 1 then
+			local tmp = self.rnns[i]:backward({self.net_out[i], self.sll[i-1], self.A}, self.dsll)
+			net_grad = tmp[1]
+			self.dsll = tmp[2]
+			self.dA:add(tmp[3])
+		else
+			net_grad = self.dsll
+		end
 
-		local net_grad = tmp[1]
-		self.dsll = tmp[2]
-		self.dA:add(tmp[3])
 		if i > 1 then self.dA[targets[i]][targets[i-1]] = self.dA[targets[i]][targets[i-1]] - 1 end
 
 		local x = sequence:sub(1,1,i,i+params.window_size-1)
 		local target = targets[i]
-		--print(net_grad)
+
+		--print(i)
+		--if net_grad:dim() == 1 then 
+		--	net_grad:resize(1,net_grad:size(1))
+		--end
 		net_grad[1][target] = net_grad[1][target] - 1
 
 		self.networks[i]:backward({x}, net_grad)

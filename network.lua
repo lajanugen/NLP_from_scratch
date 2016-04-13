@@ -1,5 +1,5 @@
 require 'models/GloVeEmbedding'
---nngraph.setDebug('true')
+nngraph.setDebug('true')
 
 function window_network()
 	local x                = nn.Identity()()
@@ -60,9 +60,9 @@ function sll()
 	local prev_d	= nn.Identity()()
 	local A			= nn.Identity()()
 
-	--local net_out_t = nn.Transpose({1,2})(net_out)
+	local prev_d_t = nn.Transpose({1,2})(prev_d)
 	--local rep_sum = nn.CAddTable()({net_out_t, prev_d})
-	local sum_shp = nn.Replicate(params.num_tags,2)(prev_d)
+	local sum_shp = nn.Replicate(params.num_tags,2)(prev_d_t)
 	local sum_mat = nn.CAddTable()({sum_shp,A})
 	local lse_mean = nn.Mean(1)(sum_mat)
 	local lse_mean_rep = nn.Replicate(params.num_tags,1)(lse_mean)
@@ -71,6 +71,7 @@ function sll()
 	local next_d = nn.CAddTable()({next_d, lse_mean})
 
 	next_d = nn.CAddTable()({next_d, net_out})
+	next_d = nn.Transpose({1,2})(next_d)
 
 	local module = nn.gModule({net_out, prev_d, A}, {next_d})
 	return transfer_data(module)

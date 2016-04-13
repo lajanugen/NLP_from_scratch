@@ -28,7 +28,7 @@ use_embeddings  = false,
 caps_feats		= true,
 senna_vocab		= true,
 seq_length		= 100,
-use_gpu			= true,
+use_gpu			= false,
 dummy_data		= true
 }
 opt = {
