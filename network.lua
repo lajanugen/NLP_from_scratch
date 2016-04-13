@@ -77,6 +77,21 @@ function sll()
 	return transfer_data(module)
 end
 
+function LSE()
+	local x = nn.Identity()()
+
+	local mean = nn.Mean()(x)
+	local mean_rep = nn.Reshape(params.num_tags,1)(mean)
+	local mean_sub = nn.CSubTable()({x, mean_rep})
+	local exp = nn.Exp()(mean_sub)
+	local sum = nn.Sum()(exp)
+	local log = nn.Log()(sum)
+	local y = nn.CAddTable()({log, mean})
+
+	local module = nn.gModule({x},{y})
+	return transfer_data(module)
+end
+
 --function sll()
 --	local net_out	= nn.Identity()()
 --	local prev_d	= nn.Identity()()

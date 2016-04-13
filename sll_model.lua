@@ -17,6 +17,9 @@ function sll_model:__init()
 	self.ds		= transfer_data(torch.zeros(1, params.num_tags))
 	self.A		= transfer_data(torch.randn(params.num_tags, params.num_tags))
 	self.dA		= transfer_data(torch.randn(params.num_tags, params.num_tags))
+
+	--self.LSE = transfer_data(nn.Sequential():add(nn.Exp()):add(nn.Sum()):add(nn.Log()))
+	self.LSE = LSE()
 end
 
 function sll_model:fp(sequence, targets)
@@ -42,7 +45,9 @@ function sll_model:fp(sequence, targets)
 	--print(self.sll)
 	--print('ni',num_iter)
 	--print(#self.sll)
-	local err = -(prob - self.sll[num_iter]:sum())
+	--print(self.sll[num_iter]:size())
+	--print(self.LSE:forward(self.sll[num_iter]:t()))
+	local err = -(prob - self.LSE:forward(self.sll[num_iter]:t())[1])
 	return err
 end
 
@@ -50,7 +55,8 @@ function sll_model:bp(sequence, targets)
 	local num_iter = sequence:size(2) - (params.window_size - 1)
 	num_iter = math.min(num_iter, params.seq_length)
 	self.paramdx:zero()
-	self.dsll	= transfer_data(torch.ones(params.num_tags, 1))
+	--self.dsll	= transfer_data(torch.ones(params.num_tags, 1))
+	self.dsll = self.LSE:backward(self.sll[num_iter]:t(),transfer_data(torch.ones(1)))
 	--self.dsll:fill(1)
 	self.dA:fill(0)
 	local net_grad
