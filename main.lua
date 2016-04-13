@@ -28,8 +28,9 @@ use_embeddings  = false,
 caps_feats		= true,
 senna_vocab		= true,
 seq_length		= 100,
-use_gpu			= false,
-dummy_data		= true
+use_gpu			= true,
+dummy_data		= true,
+A_grad			= true
 }
 opt = {
 optimizer		= 'adam',
@@ -130,7 +131,8 @@ local function run_flow()
 			perp = loss[1]
 			--n_elem = params.batch_size
 		else
-			print(step)
+			--print(step)
+			--print(data_x)
 			perp = model:pass(data_x, data_y)
 		end
 
@@ -139,13 +141,14 @@ local function run_flow()
 			--n_elems = torch.zeros(epoch_size):add(n_elem)
 		end
 		perps[step % epoch_size + 1] = perp
+		print(perp)
 		--n_elems[step % epoch_size + 1] = n_elem
 
 		step = step + 1
 		total_cases = total_cases + params.batch_size
 		epoch = step / epoch_size
 		--if step % torch.round(epoch_size * params.stats_freq) == 0 then
-		if step % 1 == 0 then
+		if step % 1000 == 0 then
 			
 			local wps = torch.floor(total_cases / torch.toc(start_time))
 			local since_beginning = g_f3(torch.toc(beginning_time) / 60)

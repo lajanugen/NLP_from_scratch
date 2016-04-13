@@ -1,5 +1,5 @@
 require 'models/GloVeEmbedding'
-nngraph.setDebug('true')
+--nngraph.setDebug('true')
 
 function window_network()
 	local x                = nn.Identity()()
@@ -50,7 +50,9 @@ function window_network_probs()
 		a = nn.Tanh()(z)
 	end
 
-	local module           = nn.gModule({x},{a})
+	local out = a
+
+	local module           = nn.gModule({x},{out})
 	module:getParameters():uniform(-params.init_weight, params.init_weight)
 	return transfer_data(module)
 end

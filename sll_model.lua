@@ -3,10 +3,12 @@ local sll_model = torch.class('sll_model')
 function sll_model:__init()
 	self.core_network = window_network_probs()
 	self.sll_network  = sll()
+
+	self.paramx, self.paramdx = self.core_network:getParameters()
+
 	self.networks	= g_cloneManyTimes(self.core_network, params.seq_length)
 	self.rnns		= g_cloneManyTimes(self.sll_network, params.seq_length)
 
-	self.paramx, self.paramdx = self.core_network:getParameters()
 
 	self.net_out	= {}
 	self.sll		= {}
@@ -16,6 +18,9 @@ function sll_model:__init()
 	end
 	self.ds		= transfer_data(torch.zeros(1, params.num_tags))
 	self.A		= transfer_data(torch.randn(params.num_tags, params.num_tags))
+	if params.A_grad then
+		self.A:fill(0)
+	end
 	self.dA		= transfer_data(torch.randn(params.num_tags, params.num_tags))
 
 	--self.LSE = transfer_data(nn.Sequential():add(nn.Exp()):add(nn.Sum()):add(nn.Log()))
@@ -47,18 +52,18 @@ function sll_model:fp(sequence, targets)
 	--print(#self.sll)
 	--print(self.sll[num_iter]:size())
 	--print(self.LSE:forward(self.sll[num_iter]:t()))
-	local err = -(prob - self.LSE:forward(self.sll[num_iter]:t())[1])
+	local err = -prob + self.LSE:forward(self.sll[num_iter]:t())[1]
 	return err
 end
 
 function sll_model:bp(sequence, targets)
 	local num_iter = sequence:size(2) - (params.window_size - 1)
 	num_iter = math.min(num_iter, params.seq_length)
+
 	self.paramdx:zero()
-	--self.dsll	= transfer_data(torch.ones(params.num_tags, 1))
-	self.dsll = self.LSE:backward(self.sll[num_iter]:t(),transfer_data(torch.ones(1)))
-	--self.dsll:fill(1)
+	self.dsll = self.LSE:backward(self.sll[num_iter]:t(), transfer_data(torch.ones(1)))
 	self.dA:fill(0)
+
 	local net_grad
 	for i = num_iter,1,-1 do
 		if i > 1 then
@@ -70,20 +75,19 @@ function sll_model:bp(sequence, targets)
 			net_grad = self.dsll
 		end
 
-		if i > 1 then self.dA[targets[i]][targets[i-1]] = self.dA[targets[i]][targets[i-1]] - 1 end
+		if i > 1 then self.dA[targets[i-1]][targets[i]] = self.dA[targets[i-1]][targets[i]] - 1 end
 
 		local x = sequence:sub(1,1,i,i+params.window_size-1)
 		local target = targets[i]
 
-		--print(i)
-		--if net_grad:dim() == 1 then 
-		--	net_grad:resize(1,net_grad:size(1))
-		--end
 		net_grad[1][target] = net_grad[1][target] - 1
 
 		self.networks[i]:backward({x}, net_grad)
 	end
-	self.A:add(self.dA:mul(-params.lr))
+	if params.A_grad then
+		self.A:add(self.dA:mul(-params.lr))
+	end
+	self.paramx:add(self.paramdx:mul(-params.lr))
 end
 
 function sll_model:pass(sequence, targets)

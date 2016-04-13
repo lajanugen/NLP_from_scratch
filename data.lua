@@ -16,11 +16,15 @@ function data:read_data()
 	local tagcount = 0
 	local sentences = {{},{},{}}
 	local tags = {{},{},{}}
+	local ul 
+	if params.dummy_data then ul = 10
+	else ul = 99
+	end
 	for i = 0,24 do
 		if i == 19 then tvt = tvt + 1 end
 		if i == 22 then tvt = tvt + 1 end
 		local i_str = tost(i)
-		for j = 0,10 do -- 99 do
+		for j = 0,ul do
 			if i > 0 or j > 0 then local j_str = tost(j) local file_path = data_path .. i_str .. '/WSJ_' .. i_str .. j_str .. '.POS'
 				local sent_mid = false
 				local sentence = {}
@@ -193,6 +197,11 @@ function data:get_next_batch(tvt,rand)
 		if self.sent_ptr[tvt] > self.Nsentences[tvt] then 
 			self.sent_ptr[tvt] = 1
 		end
+	
+		--while sentences[self.sent_ptr[tvt]]:size(1) < params.window_size + 1 do 
+		--	self.sent_ptr[tvt] = self.sent_ptr[tvt] + 1
+		--end
+
 		batch			= transfer_data(sentences[self.sent_ptr[tvt]])
 		if batch:dim() == 1 then
 			batch:resize(1,batch:size(1))
