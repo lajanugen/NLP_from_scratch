@@ -81,7 +81,7 @@ function LSE()
 	local x = nn.Identity()()
 
 	local mean = nn.Mean()(x)
-	local mean_rep = nn.Reshape(params.num_tags,1)(mean)
+	local mean_rep = nn.Replicate(params.num_tags,1)(mean)
 	local mean_sub = nn.CSubTable()({x, mean_rep})
 	local exp = nn.Exp()(mean_sub)
 	local sum = nn.Sum()(exp)
