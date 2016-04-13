@@ -17,8 +17,8 @@ function data:read_data()
 	local sentences = {{},{},{}}
 	local tags = {{},{},{}}
 	local ul 
-	if params.dummy_data then ul = 10
-	else ul = 99
+	if params.dummy_data then	ul = 10
+	else						ul = 99
 	end
 	for i = 0,24 do
 		if i == 19 then tvt = tvt + 1 end
@@ -38,6 +38,7 @@ function data:read_data()
 							sent_mid = false
 							--print(sentence)
 							assert(#sentence > 0)
+							--if #sentence == 1 then print(file_path); print(sentence) end
 							table.insert(sentences[tvt],sentence)
 							table.insert(tags[tvt],tag)
 							sentence = {}
@@ -76,6 +77,7 @@ function data:read_data()
 				end
 				--print(sentence)
 				if #sentence > 0 then
+					--if #sentence == 1 then print(file_path); print(sentence) end
 					table.insert(sentences[tvt],sentence)
 					table.insert(tags[tvt],tag)
 					sentence = {}
@@ -125,14 +127,16 @@ function data:__init()
 			for k = 1,(params.window_size-1)/2 do table.insert(sent_t,DUMMY) end
 			for _,word in ipairs(sent) do table.insert(sent_t,self.vocab_map[word]) end
 			for k = 1,(params.window_size-1)/2 do table.insert(sent_t,DUMMY) end
-			sentences[i][j] = transfer_data(torch.Tensor(sent_t))
+			--sentences[i][j] = transfer_data(torch.Tensor(sent_t))
+			sentences[i][j] = torch.Tensor(sent_t)
 
 			if sentences[i][j]:size(1) == 4 then print('sent', sent) end
 
 			local tag_t = {}
 			local tag = tags[i][j]
 			for _,tg in ipairs(tag) do table.insert(tag_t,self.tag_map[tg]) end
-			tags[i][j] = transfer_data(torch.Tensor(tag_t))
+			--tags[i][j] = transfer_data(torch.Tensor(tag_t))
+			tags[i][j] = torch.Tensor(tag_t)
 		end
 	end
 
@@ -198,18 +202,32 @@ function data:get_next_batch(tvt,rand)
 			self.sent_ptr[tvt] = 1
 		end
 	
-		--while sentences[self.sent_ptr[tvt]]:size(1) < params.window_size + 1 do 
+		--if sentences[self.sent_ptr[tvt]]:size(1) < params.window_size + 1 then 
 		--	self.sent_ptr[tvt] = self.sent_ptr[tvt] + 1
 		--end
 
-		batch			= transfer_data(sentences[self.sent_ptr[tvt]])
-		if batch:dim() == 1 then
-			batch:resize(1,batch:size(1))
-		end
+		batch = self:next_batch_helper(tvt)
+
 		batch_target	= transfer_data(targets[self.sent_ptr[tvt]])
 		if not params.dummy_data then
 			self.sent_ptr[tvt] = self.sent_ptr[tvt] + 1
 		end
 	end
 	return batch, batch_target
+end
+
+function data:next_batch_helper(tvt)
+	batch			= transfer_data(self.sentences[tvt][self.sent_ptr[tvt]])
+	if batch:dim() == 1 then
+		batch:resize(1,batch:size(1))
+	elseif batch:size(2) == 1 then
+		batch = batch:t()
+	end
+	while batch:size(2) < params.window_size + 1 do 
+		self.sent_ptr[tvt] = self.sent_ptr[tvt] + 1
+		--print(batch:size())
+		--print('SKIP')
+		return self:next_batch_helper(tvt)
+	end
+	return batch
 end

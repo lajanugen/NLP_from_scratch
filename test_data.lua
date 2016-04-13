@@ -36,24 +36,9 @@ function transfer_data(x)
 	end
 end
 
---data = data()
---
---for i = 1,100 do
---	a, b = data:get_next_batch(1)
---	print(a:size(2))
---end
+data = data()
 
-net = window_network_probs()
-
-f,g = net:parameters()
-print(f)
-
-i = torch.Tensor({1,2,3,4,5})
-y = torch.Tensor({1,2,3,4,5})
-i:resize(1,5)
-print(i)
-o = net:forward(i)
-print(o)
-
-t = net:backward({i},y)
-print(t)
+for i = 1,5000 do
+	a, b = data:get_next_batch(1)
+	--if i == 4810 then print(a) end
+end

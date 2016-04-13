@@ -5,6 +5,10 @@ require 'sll_model'
 require 'data'
 require 'optim'
 require 'utils'
+require 'folder_utils'
+
+--require('mobdebug').start()
+--require('mobdebug').off()
 
 params = {
 window_size		= 5,
@@ -29,14 +33,20 @@ caps_feats		= true,
 senna_vocab		= true,
 seq_length		= 100,
 use_gpu			= true,
-dummy_data		= true,
-A_grad			= true
+dummy_data		= false,
+A_grad			= true,
+test			= false,
+model_checkpoint= true,
+model_checkpoint_freq=1
 }
 opt = {
 optimizer		= 'adam',
 learning_rate	= 0.001,
 momentum		= 0.5
 }
+
+folder_mgmt()
+mkdirs()
 
 function transfer_data(x)
 	if params.use_gpu then	return x:cuda()
@@ -141,21 +151,23 @@ local function run_flow()
 			--n_elems = torch.zeros(epoch_size):add(n_elem)
 		end
 		perps[step % epoch_size + 1] = perp
-		print(perp)
+		--print(perp)
 		--n_elems[step % epoch_size + 1] = n_elem
 
 		step = step + 1
 		total_cases = total_cases + params.batch_size
 		epoch = step / epoch_size
 		--if step % torch.round(epoch_size * params.stats_freq) == 0 then
-		if step % 1000 == 0 then
+		if step % 100 == 0 then
 			
 			local wps = torch.floor(total_cases / torch.toc(start_time))
 			local since_beginning = g_f3(torch.toc(beginning_time) / 60)
 			--', train perp. = ' .. g_f3(torch.exp(perps:mean())) ..
 			--print('word_embs',torch.sum(word_embs))
+			
 			local perp = perps:mean()
 			print('epoch = ' .. g_f3(epoch) ..
+			', step = ' .. g_f3(step) .. 
 			', train error = ' .. g_f3(perp) ..
 			', wps = ' .. wps ..
 			--', dw:norm() = ' .. g_f3(model.norm_dw) ..
@@ -168,21 +180,19 @@ local function run_flow()
 				params.lr = params.lr / params.decay
 			end
 		end
-		if params.log_err and (step > 0) and (step % (epoch_size*params.log_err_freq) == 0) then
-			if params.err_display then
-				for t = 1,perps:size(1) do io.write(g_d(perps[t])) io.write(' ') end
-				io.write('\n')
-			end
-			for i = 1,3 do if params.err_log[i] then table.insert(errors[i],run(i)) end end
+		--if params.log_err and (step > 0) and (step % (epoch_size*params.log_err_freq) == 0) then
+		if step % 1000 == 0 then
+			--for i = 1,3 do if params.err_log[i] then table.insert(errors[i],run(i)) end end
+			model:run(2)
 		end
 
 		if step % 33 == 0 then
 			cutorch.synchronize()
 			--collectgarbage()
 		end
-		if params.model_checkpoint and (step > 0) and ((step % (params.model_checkpoint_freq*epoch_size)) == 0) then
-			torch.save(params.save_path .. 'models/paramx' .. tostring(epoch),model.paramx);
-			torch.save(params.save_path .. 'models/model' .. tostring(epoch),model);
+		if params.model_checkpoint and (step > 0) and ((step % 100000) == 0) then
+			torch.save(params.save_path .. 'models/paramx' .. tostring(epoch) .. '_' .. tostring(step),model.paramx);
+			--torch.save(params.save_path .. 'models/model' .. tostring(epoch),model);
 		end
 	end
 
@@ -191,7 +201,7 @@ local function run_flow()
 
 	if params.save_models then
 		torch.save(params.save_path .. 'models/model.paramx',model.paramx);
-		torch.save(params.save_path .. 'models/model',model.paramx);
+		--torch.save(params.save_path .. 'models/model',model.paramx);
 	end
 
 	if params.make_plots then
@@ -213,6 +223,10 @@ local function run_flow()
 	end
 end
 
-run_flow()
+if params.test then 
+	model:run(3)
+else	
+	run_flow()
+end
 
 
