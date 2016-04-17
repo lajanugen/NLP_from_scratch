@@ -2,6 +2,7 @@ require 'nngraph'
 require 'cunn'
 require 'network'
 require 'sll_model'
+require 'wll_model'
 require 'data'
 require 'optim'
 require 'utils'
@@ -11,42 +12,59 @@ require 'folder_utils'
 --require('mobdebug').off()
 
 params = {
-window_size		= 5,
-vocab_size		= 100,
-batch_size		= 1,
-layers			= 1,
-num_tags		= 1,
-lr				= 0.1,
-layers			= 3,
-layer_size		= {0, 300},
-objective		= 'sll',
-custom_optimizer= false,
-init_weight		= 0.01,
-max_max_epoch	= 100,
-stats_freq		= 1,
-log_err			= true,
-log_err_freq	= 1,
-err_log			= {false,true,true},
-embedding_size  = 300,
-use_embeddings  = false,
-caps_feats		= true,
-senna_vocab		= true,
-seq_length		= 100,
-use_gpu			= true,
-dummy_data		= false,
-A_grad			= true,
-test			= false,
-model_checkpoint= true,
-model_checkpoint_freq=1
+task					= 'Chunking',
+SENNA_dict				= true,
+cap_feat				= true,
+window_size				= 5,
+vocab_size				= 100,
+batch_size				= 2,
+layers					= 1,
+num_tags				= 1,
+lr						= 0.01,
+layers					= 3,
+layer_size				= {0, 300},
+objective				= 'wll',
+custom_optimizer		= false,
+init_weight				= 0.01,
+max_max_epoch			= 100,
+stats_freq				= 1,
+log_err					= true,
+log_err_freq			= 1,
+err_log					= {false,true,true},
+embedding_size  		= 300,
+caps_embedding_size 	= 5,
+use_embeddings  		= false,
+embeddings_fixed		= true,
+caps_feats				= true,
+senna_vocab				= true,
+seq_length				= 100,
+use_gpu					= true,
+dummy_data				= false,
+A_grad					= true,
+model_checkpoint		= true,
+model_checkpoint_freq	= 1,
+
+nosave					= true,
+test					= false,
+pre_init_mdl			= false,
+pre_init_mdl_path		= 'results/10/models/',
+pre_init_mdl_name		= 'paramx99',
+save_results			= true,
+test_file				= '/home/llajan/data/Chunking/test.txt',
+log_dir					= true
 }
 opt = {
 optimizer		= 'adam',
-learning_rate	= 0.001,
-momentum		= 0.5
+learning_rate	= 0.01,
+momentum		= 0
 }
 
-folder_mgmt()
-mkdirs()
+if params.test then params.pre_init_mdl = true end
+
+if params.nosave or not params.test then
+	folder_mgmt()
+	mkdirs()
+end
 
 function transfer_data(x)
 	if params.use_gpu then	return x:cuda()
@@ -56,46 +74,33 @@ end
 
 if params.use_gpu then g_init_gpu(arg) end
 data = data()
-params.layer_size[1] = params.window_size * params.embedding_size
+params.layer_size[1] = params.window_size * (params.embedding_size + params.caps_embedding_size)
 table.insert(params.layer_size, params.target_size)
 
-if params.objective == 'wll' then 
-	model = window_network()
-	criterion = transfer_data(nn.ClassNLLCriterion())
-	paramx, paramdx = model:getParameters()
-else
+if params.objective == 'wll' then	
+	model = wll_model()
+	params.custom_optimizer = true
+else								
 	model = sll_model()
+	params.batch_size = 1
 end
 
-
-local function feval(x)
-	if x ~= paramx then
-		paramx:copy(x)
+function feval(x)
+	if x ~= model.paramx then
+		model.paramx:copy(x)
 	end
-	--assert(torch.sum(torch.eq(data_x,0)) == 0)
-	--assert(torch.sum(torch.eq(data_y,0)) == 0) 
-	--print(data_x)
-	--print(params.vocab_size)
-	local pred = model:forward(data_x)
-	local err = criterion:forward(pred, data_y)
-	local df_dw = criterion:backward(pred, data_y)
-	paramdx:fill(0)
-	model:backward(data_x,df_dw)
-
-	return err, paramdx
-end
-
-local function run(tvt)
-	local num_batches = data:get_batch_count(tvt)
-	local err = 0
-	for i = 1,num_batches do
-		local data_x, data_y = data:get_next_batch(tvt)
-		local pred = model:forward(data_x)
-		_, pred_y = torch.max(pred,2)
-		err = err + torch.mean(torch.eq(data_y, pred_y))
+	local pred
+	if params.cap_feat then	pred = model.core_network:forward({data_x, data_x_caps})
+	else					pred = model.core_network:forward(data_x)
 	end
-	print(err/num_batches)
-	return err/num_batches
+	local err = model.criterion:forward(pred, data_y)
+	local df_dw = model.criterion:backward(pred, data_y)
+	model.paramdx:fill(0)
+	if params.cap_feat then model.core_network:backward({data_x, data_x_caps}, df_dw)
+	else					model.core_network:backward(data_x, df_dw)
+	end
+
+	return err, model.paramdx
 end
 
 local function run_flow() 
@@ -123,19 +128,21 @@ local function run_flow()
 
 	local errors = {{},{},{}}
 	local train_errors = {}
+	local val_errors = {}
+	local test_errors = {}
 	local perps, n_elems
 	local perp, n_elem
 
 	while epoch < params.max_max_epoch do
 		--print(step)
 
-		data_x, data_y = data:get_next_batch(1,false)
+		data_x, data_x_caps, data_y, done = data:get_next_batch(1,false)
 
 		if params.custom_optimizer then
 			if		opt.optimizer=='rmsprop' then	_, loss = optim.rmsprop(feval, paramx, optim_config)
 			elseif	opt.optimizer=='adagrad' then	_, loss = optim.adagrad(feval, paramx, optim_config)
-			elseif	opt.optimizer=='sgd'	 then	_, loss = optim.sgd(feval, paramx, optim_config)
-			elseif	opt.optimizer=='adam'	 then 	_, loss = optim.adam(feval, paramx, optim_config)
+			elseif	opt.optimizer=='sgd'	 then	_, loss = optim.sgd(feval, model.paramx, optim_config)
+			elseif	opt.optimizer=='adam'	 then 	_, loss = optim.adam(feval, model.paramx, optim_config)
 			else	error('undefined optimizer')
 			end
 			perp = loss[1]
@@ -156,7 +163,7 @@ local function run_flow()
 
 		step = step + 1
 		total_cases = total_cases + params.batch_size
-		epoch = step / epoch_size
+		--epoch = step / epoch_size
 		--if step % torch.round(epoch_size * params.stats_freq) == 0 then
 		if step % 100 == 0 then
 			
@@ -166,34 +173,56 @@ local function run_flow()
 			--print('word_embs',torch.sum(word_embs))
 			
 			local perp = perps:mean()
-			print('epoch = ' .. g_f3(epoch) ..
-			', step = ' .. g_f3(step) .. 
+			print('epoch = ' .. g_f3(epoch + step/epoch_size) ..
+			--', step = ' .. g_f3(step) .. 
 			', train error = ' .. g_f3(perp) ..
 			', wps = ' .. wps ..
 			--', dw:norm() = ' .. g_f3(model.norm_dw) ..
 			', lr = ' ..  g_f3(params.lr) ..
 			', since beginning = ' .. since_beginning .. ' mins.')
 		end
-		if step % epoch_size == 0 then
+
+		if done or (step % epoch_size == 0) then
 			table.insert(train_errors,perps:mean())
+			local val  = model:run(2)
+			local test = model:run(3)
+			table.insert(val_errors, val)
+			table.insert(test_errors, test)
+			if not params.nosave then
+				torch.save(params.save_path .. 'train_errors.t7', train_errors)
+				torch.save(params.save_path .. 'val_errors.t7', val_errors)
+				torch.save(params.save_path .. 'test_errors.t7', test_errors)
+			end
+
 			if params.lr_decay and (epoch > params.max_epoch) then
 				params.lr = params.lr / params.decay
 			end
+			perps = nil
+			if params.model_checkpoint and not params.nosave then
+				torch.save(params.save_path .. 'models/paramx' .. tostring(epoch), model.paramx);
+			end
+			epoch = epoch + 1
+			step = 0
+
+			data:reset_pointer(1)
+			data:reset_pointer(2)
+			data:reset_pointer(3)
 		end
 		--if params.log_err and (step > 0) and (step % (epoch_size*params.log_err_freq) == 0) then
-		if step % 1000 == 0 then
-			--for i = 1,3 do if params.err_log[i] then table.insert(errors[i],run(i)) end end
-			model:run(2)
-		end
+		--if step % 1000 == 0 then
+		--	--for i = 1,3 do if params.err_log[i] then table.insert(errors[i],run(i)) end end
+		--	model:run(2)
+		--end
 
 		if step % 33 == 0 then
 			cutorch.synchronize()
 			--collectgarbage()
 		end
-		if params.model_checkpoint and (step > 0) and ((step % 100000) == 0) then
-			torch.save(params.save_path .. 'models/paramx' .. tostring(epoch) .. '_' .. tostring(step),model.paramx);
-			--torch.save(params.save_path .. 'models/model' .. tostring(epoch),model);
-		end
+
+		--if params.model_checkpoint and (step > 0) and ((step % 100000) == 0) then
+		--	torch.save(params.save_path .. 'models/paramx' .. tostring(epoch) .. '_' .. tostring(step),model.paramx);
+		--	--torch.save(params.save_path .. 'models/model' .. tostring(epoch),model);
+		--end
 	end
 
 	--ProFi:stop()
@@ -224,7 +253,24 @@ local function run_flow()
 end
 
 if params.test then 
-	model:run(3)
+	local acc, predictions, words = model:run(3)
+	local target_file = params.pre_init_mdl_path .. 'results_' .. params.pre_init_mdl_name
+	if params.save_results then
+		fp = io.open(target_file, 'w')
+		local count = 1
+		for line in io.lines(params.test_file) do
+			u, v, w = unpack(string.split(line, ' '))
+			if w then
+				--print(u, words[count])
+				--assert(u == words[count])
+				line = line .. ' ' .. data.tag_invmap[predictions[count]]
+				count = count + 1
+			end
+			fp:write(line,"\n")
+		end
+		fp:close()
+	end
+	os.execute('./chunking_eval.pl < ' .. target_file)
 else	
 	run_flow()
 end

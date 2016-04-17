@@ -100,9 +100,9 @@ function sll_model:run(tvt)
 	local done = false
 	local sequence, targets
 	local num_cor, num_elem = 0, 0
-	--while not done do 
-	for i = 1,100 do
-		sequence, targets = data:get_next_batch(tvt)
+	while not done do 
+	--for i = 1,100 do
+		sequence, targets, done = data:get_next_batch(tvt)
 
 		local num_iter = sequence:size(2) - (params.window_size - 1)
 		num_iter = math.min(num_iter, params.seq_length)
@@ -138,13 +138,13 @@ function sll_model:run(tvt)
 			label = dp_inds[label][i]
 			predicted_labels[i-1] = label
 		end
+		if targets:size(1) > params.seq_length then targets = targets:sub(1,params.seq_length) end 
+		-- Truncate sentence length to seq_length
+		--print(predicted_labels:size(), targets:size(), data.sent_ptr[2])
 		local num_correct = torch.eq(predicted_labels, targets:double()):sum()
 		num_cor = num_cor + num_correct
 		num_elem = num_elem + num_iter
 	end
-	print(num_cor/num_elem)
-end
-
-function sll_model:feval(x)
-
+	print(num_elem, num_cor/num_elem)
+	return num_cor/num_elem
 end
