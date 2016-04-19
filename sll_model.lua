@@ -6,6 +6,14 @@ function sll_model:__init()
 
 	self.paramx, self.paramdx = self.core_network:getParameters()
 
+	if params.init_with_wll then
+		local params = torch.load(params.init_with_wll_path)
+		self.paramx:copy(params)
+	elseif params.pre_init_mdl then
+		local params = torch.load(params.pre_init_mdl_path .. params.pre_init_mdl_name)
+		self.paramx:copy(params)
+	end
+
 	self.networks	= g_cloneManyTimes(self.core_network, params.seq_length)
 	self.rnns		= g_cloneManyTimes(self.sll_network, params.seq_length)
 
@@ -16,31 +24,46 @@ function sll_model:__init()
 		self.sll[i]		= transfer_data(torch.zeros(1, params.num_tags))
 	end
 	self.ds		= transfer_data(torch.zeros(1, params.num_tags))
-	self.A		= transfer_data(torch.randn(params.num_tags, params.num_tags))
+	self.A		= transfer_data(torch.zeros(params.num_tags, params.num_tags):uniform(-params.init_weight, params.init_weight))
+	self.A0		= transfer_data(torch.zeros(params.num_tags)):uniform(-params.init_weight, params.init_weight)
 	if params.A_grad then
 		self.A:fill(0)
 	end
-	self.dA		= transfer_data(torch.randn(params.num_tags, params.num_tags))
+	self.dA		= transfer_data(torch.zeros(params.num_tags, params.num_tags))
+	self.dA0	= transfer_data(torch.zeros(params.num_tags))
 
 	--self.LSE = transfer_data(nn.Sequential():add(nn.Exp()):add(nn.Sum()):add(nn.Log()))
 	self.LSE = LSE()
+	print('done_init')
 end
 
-function sll_model:fp(sequence, targets)
+function sll_model:fp(data, targets)
+	sequence = data[1]
+	sequence_caps = data[2]
+
 	local num_iter = sequence:size(2) - (params.window_size - 1)
 	num_iter = math.min(num_iter, params.seq_length)
 	local init = transfer_data(torch.zeros(params.num_tags))
 	self.sll[0] = init
 	local prob = 0
+
 	for i = 1,num_iter do
 		local x = sequence:sub(1,1,i,i+params.window_size-1)
+		local x_caps
+		if params.cap_feat then x_caps = sequence_caps:sub(1,1,i,i+params.window_size-1) end
+
 		local y = targets[i]
-		self.net_out[i] = self.networks[i]:forward(x)
+		if params.cap_feat then self.net_out[i] = self.networks[i]:forward({x, x_caps})
+		else					self.net_out[i] = self.networks[i]:forward(x)
+		end
+
+		--self.sll[i]	= self.rnns[i]:forward({self.net_out[i], self.sll[i-1], self.A})
 		if i > 1 then
 			self.sll[i]	= self.rnns[i]:forward({self.net_out[i], self.sll[i-1], self.A})
 		else
-			self.sll[i] = self.net_out[1]
+			self.sll[i]:add(self.net_out[1], self.A0)
 		end
+		
 		--graph.dot(self.rnns[1].fg, 'Forward Graph','./fg')
 		--print(self.net_out[i]:size())
 		prob = prob + self.net_out[i][1][y]
@@ -55,7 +78,9 @@ function sll_model:fp(sequence, targets)
 	return err
 end
 
-function sll_model:bp(sequence, targets)
+function sll_model:bp(data, targets)
+	sequence = data[1]
+	sequence_caps = data[2]
 	local num_iter = sequence:size(2) - (params.window_size - 1)
 	num_iter = math.min(num_iter, params.seq_length)
 
@@ -65,6 +90,9 @@ function sll_model:bp(sequence, targets)
 
 	local net_grad
 	for i = num_iter,1,-1 do
+
+		local target = targets[i]
+
 		if i > 1 then
 			local tmp = self.rnns[i]:backward({self.net_out[i], self.sll[i-1], self.A}, self.dsll)
 			net_grad = tmp[1]
@@ -74,20 +102,28 @@ function sll_model:bp(sequence, targets)
 			net_grad = self.dsll
 		end
 
-		if i > 1 then self.dA[targets[i-1]][targets[i]] = self.dA[targets[i-1]][targets[i]] - 1 end
+		if i > 1 then	self.dA[targets[i-1]][targets[i]] = self.dA[targets[i-1]][targets[i]] - 1
+		else			
+			self.dA0:copy(self.dsll)
+			self.dA0[target] = self.dA0[target] - 1
+		end
 
 		local x = sequence:sub(1,1,i,i+params.window_size-1)
-		local target = targets[i]
+		local x_caps 
+		if params.cap_feat then x_caps = sequence_caps:sub(1,1,i,i+params.window_size-1) end
 
 		--print(net_grad:size(),target)
 		net_grad[1][target] = net_grad[1][target] - 1
 
-		self.networks[i]:backward({x}, net_grad)
+		if params.cap_feat then self.networks[i]:backward({x}, net_grad)
+		else					self.networks[i]:backward({x, x_caps}, net_grad)
+		end
 	end
 	if params.A_grad then
 		self.A:add(self.dA:mul(-params.lr))
 	end
 	self.paramx:add(self.paramdx:mul(-params.lr))
+	self.A0:add(self.dA0:mul(-params.lr))
 end
 
 function sll_model:pass(sequence, targets)
@@ -99,10 +135,9 @@ end
 function sll_model:run(tvt)
 	local done = false
 	local sequence, targets
-	local num_cor, num_elem = 0, 0
-	while not done do 
+	local num_cor, num_elem = 0, 0 while not done do 
 	--for i = 1,100 do
-		sequence, targets, done = data:get_next_batch(tvt)
+		sequence, sequence_caps, targets, done = data:get_next_batch(tvt)
 
 		local num_iter = sequence:size(2) - (params.window_size - 1)
 		num_iter = math.min(num_iter, params.seq_length)
@@ -115,8 +150,14 @@ function sll_model:run(tvt)
 		self.sll[0] = init
 		for i = 1,num_iter do
 			local x = sequence:sub(1,1,i,i+params.window_size-1)
+			local x_caps
+
+			if params.cap_feat then x_caps = sequence_caps:sub(1,1,i,i+params.window_size-1) end
 			--local y = targets[i]
-			self.net_out[i] = self.networks[i]:forward(x)
+			if params.cap_feat then self.net_out[i] = self.networks[i]:forward({x, x_caps})
+			else					self.net_out[i] = self.networks[i]:forward(x)
+			end
+
 			if i > 1 then
 				self.sll[i]	= self.sll_network:forward({self.net_out[i], self.sll[i-1], self.A})
 
@@ -127,8 +168,8 @@ function sll_model:run(tvt)
 				dp_inds[{{},{i}}]:copy(max_inds)
 				dp_vals[{{},{i}}]:copy(max_vals:cmul(self.net_out[i]))
 			else
-				self.sll[i] = self.net_out[1]
-				dp_vals[{{},{1}}]:copy(self.net_out[1])
+				self.sll[i]:add(self.net_out[1], self.A0)
+				dp_vals[{{},{1}}]:copy(self.sll[1])
 			end
 		end
 		local _, label = torch.max(dp_vals[{{},{num_iter}}], 1)

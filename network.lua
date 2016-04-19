@@ -35,7 +35,8 @@ function window_network()
 	local a = allfeatures
 	for i = 1, params.layers-1 do
 		local z = nn.Linear(params.layer_size[i], params.layer_size[i+1])(a)
-		a = nn.HardTanh()(z)
+		--a = nn.HardTanh()(z)
+		a = nn.Tanh()(z)
 	end
 
 	local pred = nn.LogSoftMax()(a)
@@ -44,34 +45,65 @@ function window_network()
 	if params.cap_feat then	module = nn.gModule({x, x_caps},{pred})
 	else					module = nn.gModule({x},{pred})
 	end
-	module:getParameters():uniform(-params.init_weight, params.init_weight)
+	if not params.use_embeddings then
+		module:getParameters():uniform(-params.init_weight, params.init_weight)
+	else
+		p,g = module:parameters()
+		for i = 1,#p do
+			if p[i]:size(1) ~= 130003 then
+				p[i]:uniform(-params.init_weight, params.init_weight)
+			else
+				print(p[i]:size())
+			end
+		end
+	end
 	return transfer_data(module)
 end
 
 function window_network_probs()
 	local x                = nn.Identity()()
-	
+	local x_caps           = nn.Identity()() 
+
 	local word_embeddings
 
 	if params.use_embeddings then
-		word_embeddings = GloVeEmbeddingFixed(data.vocab_map, 300, '')
+		if params.embeddings_fixed then
+			word_embeddings = GloVeEmbeddingFixed(data.vocab_map, 300, '')
+		else
+			word_embeddings = GloVeEmbedding(data.vocab_map, 300, '')
+		end
 	else
-		word_embeddings  = nn.LookupTable(params.vocab_size, params.embedding_size)
+		word_embeddings  = nn.LookupTable(params.vocab_size,params.embedding_size)
+	end
+
+	local words_caps_cat
+	local words_caps
+	if params.cap_feat then
+		words_caps = nn.LookupTable(5,params.caps_embedding_size)(x_caps)
+		words_caps_cat = nn.Reshape(params.window_size*params.caps_embedding_size)(words_caps)
 	end
 
 	local words = word_embeddings(x)
+	local words_cat = nn.Reshape(params.window_size*params.embedding_size)(words)
 
-	local words_cat = nn.Reshape(params.layer_size[1])(words)
+	local allfeatures
+	if params.cap_feat then	allfeatures = nn.JoinTable(2,2)({words_cat, words_caps_cat})
+	else					allfeatures = words_cat
+	end
 
-	local a = words_cat
+	local a = allfeatures
 	for i = 1, params.layers-1 do
 		local z = nn.Linear(params.layer_size[i], params.layer_size[i+1])(a)
+		--a = nn.HardTanh()(z)
 		a = nn.Tanh()(z)
 	end
 
 	local out = a
 
-	local module           = nn.gModule({x},{out})
+	local module
+	if params.cap_feat then	module = nn.gModule({x, x_caps},{out})
+	else					module = nn.gModule({x},{out})
+	end
 	module:getParameters():uniform(-params.init_weight, params.init_weight)
 	return transfer_data(module)
 end
@@ -131,38 +163,3 @@ end
 --	local module = nn.gModule({net_out, prev_d, A}, {next_d})
 --	return transfer_data(module)
 --end
-
-
-function sll_network()
-	local x		= nn.Identity()()
-	local prev	= nn.Identity()()
-	local A		= nn.Identity()()
-	
-	local word_embeddings
-
-	if params.use_embeddings then
-		word_embeddings = GloVeEmbeddingFixed(data.vocab_map, 300, '')
-	else
-		word_embeddings  = nn.LookupTable(params.vocab_size, params.embedding_size)
-	end
-
-	local words = word_embeddings(x)
-
-	local words_cat = nn.Reshape(params.batch_size,params.layer_size[1])(words)
-
-	local a = words_cat
-	for i = 1, params.layers-1 do
-		local z = nn.Linear(params.layer_size[i], params.layer_size[i+1])(a)
-		a = nn.Tanh()(z)
-	end
-
-	local sum_mat = nn.CAddTable()({nn.Reshape(params.num_tags,2)(nn.CAddTable()({a,prev})),A})
-	local b = nn.Log()(nn.Sum(1)(nn.Exp()(sum_mat)))
-
-	--local pred = nn.LogSoftMax()(a)
-	
-	local module           = nn.gModule({x, prev, A},{a, b})
-	module:getParameters():uniform(-params.init_weight, params.init_weight)
-	return transfer_data(module)
-end
-

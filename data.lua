@@ -55,8 +55,9 @@ function data:read_data()
 										--if token[1] == nil then
 										--	print(tokens)
 										--end
-										if words[token[1]] == nil then 	words[token[1]] = 0
-										else							words[token[1]] = words[token[1]] + 1
+										local word = token[1]
+										if words[word] == nil then 	words[word] = 0
+										else						words[word] = words[word] + 1
 										end
 										local tg = token[#token]
 										if string.find(tg,'|') then
@@ -70,7 +71,7 @@ function data:read_data()
 											end
 											tagset[tg] = tagcount
 										end
-										table.insert(sentence,token[1])
+										table.insert(sentence,word)
 										table.insert(tag,tg)
 									end
 								end
@@ -94,13 +95,57 @@ function data:read_data()
 		local sentence, tag = {}, {}
 		for _, path in ipairs({train_data_path, test_data_path}) do
 			for line in io.lines(path) do
-				local word, pos, tg = unpack(string.split(line, ' '))
+				local word, pos, tg, test = unpack(string.split(line, ' '))
+				assert(test == nil)
 				if word ~= nil then
 					if words[word] == nil then words[word] = 0
 					else words[word] = words[word] + 1
 					end
 				end
 				if tg == nil then -- eos
+					table.insert(sentences[tvt], sentence)
+					table.insert(tags[tvt], tag)
+					sentence = {}
+					tag = {}
+				else
+					word = string.gsub(word, "%d+", 'NUMBER')
+					table.insert(sentence, word)
+					table.insert(tag, tg)
+					if tagset[tg] == nil then 
+						tagcount = tagcount + 1
+						tagset[tg] = tagcount
+					end
+				end
+			end
+			tvt = 3
+		end
+		local ntrain = #sentences[1]
+		local num_valid = torch.round(params.split*ntrain)
+		for i = ntrain - num_valid, ntrain do
+			table.insert(sentences[2], sentences[1][i])
+			table.insert(tags[2], tags[1][i])
+			sentences[1][i] = nil
+			tags[1][i] = nil
+		end
+	elseif params.task == 'NER' then
+		train_data_path = '/home/llajan/data/ner/eng.train'
+		test_data_path	= '/home/llajan/data/ner/eng.testb'
+		local sentence, tag = {}, {}
+		for _, path in ipairs({train_data_path, test_data_path}) do
+			ct = 0
+			for line in io.lines(path) do
+				ct = ct + 1
+				local word, pos, _, tg, test = unpack(string.split(line, ' '))
+				assert(test == nil)
+				if word ~= nil then
+					word = string.gsub(word, "%d+", 'NUMBER')
+					word = word:lower()
+					if words[word] == nil then words[word] = 0
+					else words[word] = words[word] + 1
+					end
+				end
+				if tg == nil then -- eos
+					if #sentence == 0 then print(ct) end
 					table.insert(sentences[tvt], sentence)
 					table.insert(tags[tvt], tag)
 					sentence = {}
@@ -117,7 +162,7 @@ function data:read_data()
 			tvt = 3
 		end
 		local ntrain = #sentences[1]
-		local num_valid = torch.round(0.2*ntrain)
+		local num_valid = torch.round(params.split*ntrain)
 		for i = ntrain - num_valid, ntrain do
 			table.insert(sentences[2], sentences[1][i])
 			table.insert(tags[2], tags[1][i])
@@ -130,6 +175,7 @@ end
 
 function data:__init()
 	local sentences, tags, words, tagset, tagcount = unpack(self:read_data())
+	--print(tagset)
 	local word_freqs = {}
 	--for w,c in pairs(words) do table.insert(word_freqs,c) end
 	--table.sort(word_freqs)
@@ -161,6 +207,7 @@ function data:__init()
 		self.vocab_map['RARE'] = word_id + 1
 	else
 		for word,_ in pairs(words) do 
+			word = word:lower()
 			if self.vocab_map[word] == nil then
 				word_id = word_id + 1
 				self.vocab_map[word] = word_id
@@ -176,6 +223,8 @@ function data:__init()
 		self.tag_invmap[v] = u
 	end
 
+	local task_vocab_map = {}
+	local task_vocab_size = 0
 	--print(tagset)
 	--print(tagcount)
 
@@ -192,13 +241,15 @@ function data:__init()
 				if self.vocab_map[word] ~= nil then	table.insert(sent_t,self.vocab_map[word]) 
 				else								table.insert(sent_t,self.vocab_map['RARE']) 
 				end
-				local cap_feat
-				if		word == Word									then	cap_feat = 1 -- all lower
-				elseif	string.sub(Word,2,-1) == string.sub(word,2,-1)	then	cap_feat = 2 -- First letter upper
-				elseif  word:upper() == Word							then	cap_feat = 3 -- All upper
-				else															cap_feat = 4 -- Non initial upper
+				if params.cap_feat then
+					local cap_feat
+					if		word == Word									then	cap_feat = 1 -- all lower
+					elseif	string.sub(Word,2,-1) == string.sub(word,2,-1)	then	cap_feat = 2 -- First letter upper
+					elseif  word:upper() == Word							then	cap_feat = 3 -- All upper
+					else															cap_feat = 4 -- Non initial upper
+					end
+					table.insert(sent_c, cap_feat)
 				end
-				table.insert(sent_c, cap_feat)
 			end
 			for k = 1,(params.window_size-1)/2 do table.insert(sent_t,DUMMY) end
 			for k = 1,(params.window_size-1)/2 do table.insert(sent_c,5) end
@@ -258,7 +309,9 @@ function data:get_next_batch(tvt,rand)
 
 	if params.objective == 'wll' then
 		batch			= transfer_data(torch.ones(params.batch_size,params.window_size))
-		batch_caps		= transfer_data(torch.ones(params.batch_size,params.window_size))
+		if params.cap_feat then
+			batch_caps		= transfer_data(torch.ones(params.batch_size,params.window_size))
+		end
 		batch_target	= transfer_data(torch.ones(params.batch_size))
 		local x,y
 		for i = 1,params.batch_size do
@@ -281,7 +334,9 @@ function data:get_next_batch(tvt,rand)
 			end
 			assert(sentences[x]:size(1) >= y+params.window_size-1)
 			batch[i] = sentences[x]:sub(y,y+params.window_size-1)
-			batch_caps[i] = sentences_caps[x]:sub(y,y+params.window_size-1)
+			if params.cap_feat then
+				batch_caps[i] = sentences_caps[x]:sub(y,y+params.window_size-1)
+			end
 			batch_target[i] = targets[x][y]
 		end
 	else
@@ -290,7 +345,7 @@ function data:get_next_batch(tvt,rand)
 		--	self.sent_ptr[tvt] = self.sent_ptr[tvt] + 1
 		--end
 
-		batch = self:next_batch_helper(tvt)
+		batch, batch_caps = self:next_batch_helper(tvt)
 
 		batch_target	= transfer_data(targets[self.sent_ptr[tvt]])
 		if not params.dummy_data then
@@ -306,15 +361,20 @@ end
 
 function data:next_batch_helper(tvt)
 	batch			= transfer_data(self.sentences[tvt][self.sent_ptr[tvt]])
-	batch_caps		= transfer_data(self.sentences_caps[tvt][self.sent_ptr[tvt]])
+	if params.cap_feat then
+		batch_caps		= transfer_data(self.sentences_caps[tvt][self.sent_ptr[tvt]])
+	end
 	if batch:dim() == 1 then
 		batch:resize(1,batch:size(1))
+		batch_caps:resize(1,batch_caps:size(1))
 	elseif batch:size(2) == 1 then
 		batch = batch:t()
+		batch_caps = batch_caps:t()
 	end
 	while batch:size(2) < params.window_size + 1 do 
 		self.sent_ptr[tvt] = self.sent_ptr[tvt] + 1
 		--print(batch:size())
+		--print(batch)
 		print('SKIP')
 		return self:next_batch_helper(tvt)
 	end

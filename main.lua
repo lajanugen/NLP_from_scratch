@@ -12,21 +12,24 @@ require 'folder_utils'
 --require('mobdebug').off()
 
 params = {
-task					= 'Chunking',
+task					= 'POS',
 SENNA_dict				= true,
 cap_feat				= true,
 window_size				= 5,
 vocab_size				= 100,
-batch_size				= 2,
-layers					= 1,
+batch_size				= 128,
 num_tags				= 1,
 lr						= 0.01,
+lr_decay				= false,
 layers					= 3,
 layer_size				= {0, 300},
 objective				= 'wll',
+init_with_wll			= false,
+init_with_wll_path		= 'results/19/models/paramx10',
 custom_optimizer		= false,
-init_weight				= 0.01,
+init_weight				= 0.001,
 max_max_epoch			= 100,
+max_epoch				= 3,
 stats_freq				= 1,
 log_err					= true,
 log_err_freq			= 1,
@@ -34,7 +37,7 @@ err_log					= {false,true,true},
 embedding_size  		= 300,
 caps_embedding_size 	= 5,
 use_embeddings  		= false,
-embeddings_fixed		= true,
+embeddings_fixed		= false,
 caps_feats				= true,
 senna_vocab				= true,
 seq_length				= 100,
@@ -47,19 +50,25 @@ model_checkpoint_freq	= 1,
 nosave					= true,
 test					= false,
 pre_init_mdl			= false,
-pre_init_mdl_path		= 'results/10/models/',
-pre_init_mdl_name		= 'paramx99',
+pre_init_mdl_path		= 'results/23/models/',
+pre_init_mdl_name		= 'paramx28',
 save_results			= true,
-test_file				= '/home/llajan/data/Chunking/test.txt',
-log_dir					= true
+log_dir					= true,
+split					= 0.002
 }
 opt = {
 optimizer		= 'adam',
-learning_rate	= 0.01,
-momentum		= 0
+learning_rate	= 0.001,
+momentum		= 0.5
+--decay_rate		= 0.9
 }
 
+if		params.task == 'Chunking'	then params.test_file = '/home/llajan/data/Chunking/test.txt'
+elseif	params.task == 'NER'		then params.test_file = '/home/llajan/data/ner/eng.testb'
+end
+
 if params.test then params.pre_init_mdl = true end
+if not params.cap_feat then params.caps_embedding_size = 0 end
 
 if params.nosave or not params.test then
 	folder_mgmt()
@@ -81,8 +90,9 @@ if params.objective == 'wll' then
 	model = wll_model()
 	params.custom_optimizer = true
 else								
-	model = sll_model()
 	params.batch_size = 1
+	params.lr = 0.001
+	model = sll_model()
 end
 
 function feval(x)
@@ -93,6 +103,9 @@ function feval(x)
 	if params.cap_feat then	pred = model.core_network:forward({data_x, data_x_caps})
 	else					pred = model.core_network:forward(data_x)
 	end
+
+	graph.dot(model.core_network.fg, 'wll_network', 'fg')
+
 	local err = model.criterion:forward(pred, data_y)
 	local df_dw = model.criterion:backward(pred, data_y)
 	model.paramdx:fill(0)
@@ -150,7 +163,7 @@ local function run_flow()
 		else
 			--print(step)
 			--print(data_x)
-			perp = model:pass(data_x, data_y)
+			perp = model:pass({data_x, data_x_caps}, data_y)
 		end
 
 		if perps == nil then
@@ -194,12 +207,16 @@ local function run_flow()
 				torch.save(params.save_path .. 'test_errors.t7', test_errors)
 			end
 
-			if params.lr_decay and (epoch > params.max_epoch) then
-				params.lr = params.lr / params.decay
+			if params.lr_decay and params.objective == 'sll' then
+				--params.lr = params.lr / params.decay
+				params.lr = params.lr/10
+				--opt.learning_rate = 0.0001
 			end
 			perps = nil
 			if params.model_checkpoint and not params.nosave then
 				torch.save(params.save_path .. 'models/paramx' .. tostring(epoch), model.paramx);
+				torch.save(params.save_path .. 'models/A' .. tostring(epoch), model.A)
+				torch.save(params.save_path .. 'models/A0' .. tostring(epoch), model.A0)
 			end
 			epoch = epoch + 1
 			step = 0

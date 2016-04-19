@@ -43,6 +43,7 @@ function GloVeEmbedding:__init(word2idx, embedding_size, data_dir)
         self.weight = w:contiguous()
         torch.save(vocab_embedding_file, self.weight)
     end
+	self.gradWeight = torch.Tensor(self.weight:size()):zero()
     print("loaded glove vectors")
 end
 
