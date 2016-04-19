@@ -5,14 +5,14 @@ function wll_model:__init()
 	self.criterion = transfer_data(nn.ClassNLLCriterion())
 	self.paramx, self.paramdx = self.core_network:getParameters()
 
-	self.core_network:parameters()[1]:uniform(-0.5,0.5)
-	self.core_network:parameters()[2]:uniform(-0.5,0.5)
-	local fanin = params.layer_size[1]
-	self.core_network:parameters()[3]:uniform(-0.5*math.sqrt(1/fanin),0.5*math.sqrt(1/fanin))
-	self.core_network:parameters()[4]:uniform(-0.5*math.sqrt(1/fanin),0.5*math.sqrt(1/fanin))
-	local fanin = params.layer_size[2]
-	self.core_network:parameters()[5]:uniform(-0.5*math.sqrt(1/fanin),0.5*math.sqrt(1/fanin))
-	self.core_network:parameters()[6]:uniform(-0.5*math.sqrt(1/fanin),0.5*math.sqrt(1/fanin))
+	--self.core_network:parameters()[1]:uniform(-0.5,0.5)
+	--self.core_network:parameters()[2]:uniform(-0.5,0.5)
+	--local fanin = params.layer_size[1]
+	--self.core_network:parameters()[3]:uniform(-0.5*math.sqrt(1/fanin),0.5*math.sqrt(1/fanin))
+	--self.core_network:parameters()[4]:uniform(-0.5*math.sqrt(1/fanin),0.5*math.sqrt(1/fanin))
+	--local fanin = params.layer_size[2]
+	--self.core_network:parameters()[5]:uniform(-0.5*math.sqrt(1/fanin),0.5*math.sqrt(1/fanin))
+	--self.core_network:parameters()[6]:uniform(-0.5*math.sqrt(1/fanin),0.5*math.sqrt(1/fanin))
 
 	if params.pre_init_mdl then
 		local params = torch.load(params.pre_init_mdl_path .. params.pre_init_mdl_name)
