@@ -57,24 +57,15 @@ function sll_model:fp(data, targets)
 		else					self.net_out[i] = self.networks[i]:forward(x)
 		end
 
-		--self.sll[i]	= self.rnns[i]:forward({self.net_out[i], self.sll[i-1], self.A})
-		if i > 1 then
-			self.sll[i]	= self.rnns[i]:forward({self.net_out[i], self.sll[i-1], self.A})
-		else
-			self.sll[i]:add(self.net_out[1], self.A0)
+		if i > 1 then	self.sll[i]	= self.rnns[i]:forward({self.net_out[i], self.sll[i-1], self.A})
+		else			self.sll[i]:add(self.net_out[1], self.A0)
 		end
 		
 		--graph.dot(self.rnns[1].fg, 'Forward Graph','./fg')
-		--print(self.net_out[i]:size())
 		prob = prob + self.net_out[i][1][y]
 		if i > 1 then prob = prob + self.A[targets[i-1]][targets[i]] end
 	end
-	--print(self.sll)
-	--print('ni',num_iter)
-	--print(#self.sll)
-	--print(self.sll[num_iter]:size())
-	--print(self.LSE:forward(self.sll[num_iter]:t()))
-	local err = -prob + self.LSE:forward(self.sll[num_iter]:t())[1]
+	local err = -prob + self.LSE:forward(self.sll[num_iter]:t())[1] -- Negative log prob
 	return err
 end
 
@@ -115,15 +106,18 @@ function sll_model:bp(data, targets)
 		--print(net_grad:size(),target)
 		net_grad[1][target] = net_grad[1][target] - 1
 
-		if params.cap_feat then self.networks[i]:backward({x}, net_grad)
-		else					self.networks[i]:backward({x, x_caps}, net_grad)
+		if params.cap_feat then self.networks[i]:backward({x, x_caps}, net_grad)
+		else					self.networks[i]:backward({x}, net_grad)
 		end
 	end
 	if params.A_grad then
-		self.A:add(self.dA:mul(-params.lr))
+		--self.A:add(self.dA:mul(-params.lr))
+		param_update(self.A, self.dA)
 	end
-	self.paramx:add(self.paramdx:mul(-params.lr))
-	self.A0:add(self.dA0:mul(-params.lr))
+	--self.paramx:add(self.paramdx:mul(-params.lr))
+	--self.A0:add(self.dA0:mul(-params.lr))
+	param_update(self.paramx, self.paramdx)
+	param_update(self.A0, self.dA0)
 end
 
 function sll_model:pass(sequence, targets)
@@ -189,3 +183,26 @@ function sll_model:run(tvt)
 	print(num_elem, num_cor/num_elem)
 	return num_cor/num_elem
 end
+
+function param_update(param, grad, state, coeff)
+	if coeff then grad:copy(params.reg_coeff * param) end
+	local coeff = 1 or coeff
+	local norm_dw
+	if params.backprop then
+		norm_dw = grad:norm()
+		if params.grad_clipping and (norm_dw > params.max_grad_norm) then
+			local shrink_factor = params.max_grad_norm / norm_dw
+			--if not params.custom_optimizer then --Vanilla GD
+			grad:mul(shrink_factor) -- Gradient clipping
+			--end
+		end
+		if params.update_params then
+			if      params.custom_optimizer == 'adam'       then adam(param, grad, opt, state)
+			elseif  params.custom_optimizer == 'rmsprop'    then rmsprop(param, grad, opt, state)
+			else                                                 param:add(grad:mul(-params.lr))
+			end
+		end
+	end
+	return norm_dw
+end
+

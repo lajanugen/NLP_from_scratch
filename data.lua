@@ -366,10 +366,10 @@ function data:next_batch_helper(tvt)
 	end
 	if batch:dim() == 1 then
 		batch:resize(1,batch:size(1))
-		batch_caps:resize(1,batch_caps:size(1))
+		if params.cap_feat then batch_caps:resize(1,batch_caps:size(1)) end
 	elseif batch:size(2) == 1 then
 		batch = batch:t()
-		batch_caps = batch_caps:t()
+		if params.cap_feat then batch_caps = batch_caps:t() end
 	end
 	while batch:size(2) < params.window_size + 1 do 
 		self.sent_ptr[tvt] = self.sent_ptr[tvt] + 1

@@ -113,6 +113,8 @@ function sll()
 	local prev_d	= nn.Identity()()
 	local A			= nn.Identity()()
 
+	-- Computes sum_i prevd_i + A_ij + netout_j
+
 	local prev_d_t = nn.Transpose({1,2})(prev_d)
 	--local rep_sum = nn.CAddTable()({net_out_t, prev_d})
 	local sum_shp = nn.Replicate(params.num_tags,2)(prev_d_t)
@@ -130,7 +132,7 @@ function sll()
 	return transfer_data(module)
 end
 
-function LSE()
+function LSE() -- LogSumExp
 	local x = nn.Identity()()
 
 	local mean = nn.Mean()(x)

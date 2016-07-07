@@ -13,8 +13,8 @@ require 'folder_utils'
 
 params = {
 task					= 'POS',
-SENNA_dict				= true,
-cap_feat				= true,
+SENNA_dict				= false,
+cap_feat				= false,
 window_size				= 5,
 vocab_size				= 100,
 batch_size				= 128,
@@ -23,7 +23,7 @@ lr						= 0.01,
 lr_decay				= false,
 layers					= 3,
 layer_size				= {0, 300},
-objective				= 'wll',
+objective				= 'sll',
 init_with_wll			= false,
 init_with_wll_path		= 'results/19/models/paramx10',
 custom_optimizer		= false,
@@ -41,11 +41,15 @@ embeddings_fixed		= false,
 caps_feats				= true,
 senna_vocab				= true,
 seq_length				= 100,
-use_gpu					= true,
-dummy_data				= false,
+use_gpu					= false,
+dummy_data				= true,
 A_grad					= true,
 model_checkpoint		= true,
 model_checkpoint_freq	= 1,
+max_grad_norm			= 5,
+backprop				= true,
+grad_clipping			= true,
+update_params			= true,
 
 nosave					= true,
 test					= false,
@@ -56,6 +60,7 @@ save_results			= true,
 log_dir					= true,
 split					= 0.002
 }
+
 opt = {
 optimizer		= 'adam',
 learning_rate	= 0.001,
@@ -91,7 +96,7 @@ if params.objective == 'wll' then
 	params.custom_optimizer = true
 else								
 	params.batch_size = 1
-	params.lr = 0.001
+	params.lr = 0.01
 	model = sll_model()
 end
 
@@ -163,7 +168,9 @@ local function run_flow()
 		else
 			--print(step)
 			--print(data_x)
-			perp = model:pass({data_x, data_x_caps}, data_y)
+			if params.cap_feat then perp = model:pass({data_x, data_x_caps}, data_y)
+			else					perp = model:pass({data_x}, data_y)
+			end
 		end
 
 		if perps == nil then
