@@ -29,6 +29,7 @@ Example command lines:
 * th main.lua -task POS -mode demo -gpu 4 -input "This is a great course ."
 
   - Runs the pre-trained model on an input sentence. As for the test mode, make sure that the pre-trained model is specified in main.lua
+  - Sample output: 'This/DT is/VBZ a/DT great/JJ course/NN ./.'
 
 * Modify other parameters in main.lua for training as necessary
 
