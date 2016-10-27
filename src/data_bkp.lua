@@ -1,0 +1,72 @@
+--if params.task == 'POS' then
+	--	local ul 
+	--	if params.dummy_data then	ul = 10
+	--	else						ul = 99
+	--	end
+	--	for i = 0,24 do
+	--		if i == 19 then tvt = tvt + 1 end
+	--		if i == 22 then tvt = tvt + 1 end
+	--		local i_str = tost(i)
+	--		for j = 0,ul do
+	--			if i > 0 or j > 0 then local j_str = tost(j) local file_path = data_path .. i_str .. '/WSJ_' .. i_str .. j_str .. '.POS'
+	--				local sent_mid = false
+	--				local sentence = {}
+	--				local tag = {}
+	--				for line in io.lines(file_path) do
+	--					if not sent_mid then
+	--						if line ~= '' and string.sub(line,1,1) ~= '=' then sent_mid = true end
+	--					end
+	--					if sent_mid then
+	--						if line == '' or string.sub(line,1,1) == '=' then 
+	--							sent_mid = false
+	--							--print(sentence)
+	--							assert(#sentence > 0)
+	--							--if #sentence == 1 then print(file_path); print(sentence) end
+	--							table.insert(sentences[tvt],sentence)
+	--							table.insert(tags[tvt],tag)
+	--							sentence = {}
+	--							tag = {}
+	--						else
+	--							--if string.sub(line,1,1) == '[' and string.sub(line,-1,-1) == ']' then line = string.sub(line,2,-2) end
+	--							--if string.sub(line,1,1) == '[' and string.sub(line,-2,-2) == ']' then line = string.sub(line,2,-3) end
+	--							local tokens = string.split(line,' ')
+	--							for k = 1,#tokens do 
+	--								local token = string.split(tokens[k],'/')
+	--								if token[2] ~= nil then
+	--									--if token[1] == nil then
+	--									--	print(tokens)
+	--									--end
+	--									local word = token[1]
+	--									if words[word] == nil then 	words[word] = 0
+	--									else						words[word] = words[word] + 1
+	--									end
+	--									local tg = token[#token]
+	--									if string.find(tg,'|') then
+	--										tg = string.split(tg,'|')[1]
+	--									end
+	--									--if tagset[tg] == nil then 
+	--									--	tagcount = tagcount + 1
+	--									--	if tg == nil then
+	--									--		print(i_str,j_str)
+	--									--		print(tokens)
+	--									--	end
+	--									--	tagset[tg] = tagcount
+	--									--end
+	--									table.insert(sentence,word)
+	--									table.insert(tag,tg)
+	--								end
+	--							end
+	--						end
+	--					end
+	--				end
+	--				--print(sentence)
+	--				if #sentence > 0 then
+	--					--if #sentence == 1 then print(file_path); print(sentence) end
+	--					table.insert(sentences[tvt],sentence)
+	--					table.insert(tags[tvt],tag)
+	--					sentence = {}
+	--					tag = {}
+	--				end
+	--			end
+	--		end
+	--	end
