@@ -17,9 +17,9 @@ Example command lines:
   - GPU 4 is to be used
   - The description of the experiment is "POS experiment". This description will be appended as a new line to 'results/descriptions' with a number at the beginning. A folder will be created in 'results' with this number as its name and all the training files, logs will be stored in this directory.
 
-  + To reuse the previous directory, specify '-desc 0'
-  + During training a model checkpoint will be saved to 'results/N/models' (where N is the folder number)
-  + Once the model is trained, a log of train and validation performances (train_errors, val_errors) will be available in 'results/N/models/'. These logs can be used to choose an optimal model.
+  * To reuse the previous directory, specify '-desc 0'
+  * During training a model checkpoint will be saved to 'results/N/models' (where N is the folder number)
+  * Once the model is trained, a log of train and validation performances (train_errors, val_errors) will be available in 'results/N/models/'. These logs can be used to choose an optimal model.
 
 * th main.lua -task POS -mode test -gpu 4
 
