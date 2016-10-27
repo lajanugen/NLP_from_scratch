@@ -13,11 +13,8 @@ Example command lines:
 * th main.lua -task POS -mode train -gpu 4 -desc "POS experiment"
 
   - Specifies the task to be POS (Options: POS/NER/Chunking)
-
   - Training mode
-
   - GPU 4 is to be used
-
   - The description of the experiment is "POS experiment". This description will be appended as a new line to 'results/descriptions' with a number at the beginning. A folder will be created in 'results' with this number as its name and all the training files, logs will be stored in this directory.
 To reuse the previous directory, specify '-desc 0'
 
