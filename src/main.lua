@@ -13,9 +13,9 @@ require 'folder_utils'
 --require('mobdebug').off()
 
 params = {
---task					= 'POS',
+task					= 'POS',
 --task					= 'NER',
-task					= 'Chunking',
+--task					= 'Chunking',
 SENNA_dict				= true,
 cap_feat				= true,
 window_size				= 5,
@@ -59,7 +59,7 @@ update_params			= true,
 nosave					= false,
 mode					= 'demo',
 pre_init_mdl			= false,
-pre_init_mdl_path		= '../results/8/models/',
+pre_init_mdl_path		= '../results/0/models/',
 pre_init_mdl_name		= 'paramx17',
 save_results			= true,
 log_dir					= true,
